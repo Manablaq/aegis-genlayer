@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+import json
+import hmac
+import os
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+
+from .engine import AegisEngine, DecisionError, ValidationError
+from .models import Attestation, Policy
+
+
+class AegisHandler(BaseHTTPRequestHandler):
+    engine: AegisEngine
+    api_token: str
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/health":
+            self._send(HTTPStatus.OK, {"ok": True, "service": "aegis-backend"})
+            return
+        if self.path.startswith("/v1/intents/") and not self._authorized():
+            self._send(HTTPStatus.UNAUTHORIZED, {"error": "UNAUTHORIZED"})
+            return
+        if self.path.startswith("/v1/intents/"):
+            intent_id = self.path.removeprefix("/v1/intents/")
+            try:
+                self._send(HTTPStatus.OK, self.engine.intents[intent_id].to_dict())
+            except KeyError:
+                self._send(HTTPStatus.NOT_FOUND, {"error": "INTENT_UNKNOWN"})
+            return
+        self._send(HTTPStatus.NOT_FOUND, {"error": "NOT_FOUND"})
+
+    def do_POST(self) -> None:  # noqa: N802
+        if not self._authorized():
+            self._send(HTTPStatus.UNAUTHORIZED, {"error": "UNAUTHORIZED"})
+            return
+        try:
+            body = self._json()
+            if self.path == "/v1/policies":
+                self.engine.register_policy(_policy(body))
+                self._send(HTTPStatus.CREATED, {"status": "REGISTERED"})
+                return
+            if self.path == "/v1/intents":
+                intent = self.engine.create_intent(
+                    intent_id=body["intent_id"], policy_id=body["policy_id"], policy_version=int(body["policy_version"]),
+                    agent=body["agent"], action_type=body["action_type"], target=body["target"],
+                    recipient=body["recipient"], value=int(body["value"]), payload_hash=body["payload_hash"],
+                    attestations=[Attestation(**item) for item in body["attestations"]],
+                )
+                self._send(HTTPStatus.CREATED, intent.to_dict())
+                return
+            if self.path.startswith("/v1/intents/") and self.path.endswith("/evaluate"):
+                intent_id = self.path.removeprefix("/v1/intents/").removesuffix("/evaluate")
+                intent = self.engine.evaluate(intent_id=intent_id, consensus_decision=body["consensus_decision"])
+                self._send(HTTPStatus.OK, intent.to_dict())
+                return
+            if self.path.startswith("/v1/intents/") and self.path.endswith("/replace-evidence"):
+                intent_id = self.path.removeprefix("/v1/intents/").removesuffix("/replace-evidence")
+                intent = self.engine.replace_evidence(
+                    intent_id=intent_id, caller=body["caller"],
+                    attestations=[Attestation(**item) for item in body["attestations"]],
+                )
+                self._send(HTTPStatus.OK, intent.to_dict())
+                return
+            if self.path == "/v1/receipts/consume":
+                receipt = self.engine.consume_receipt(
+                    receipt_id=body["receipt_id"], consumer=body["consumer"],
+                    action_intent_value=body["action_intent"],
+                )
+                self._send(HTTPStatus.OK, receipt.to_dict())
+                return
+            self._send(HTTPStatus.NOT_FOUND, {"error": "NOT_FOUND"})
+        except (KeyError, TypeError, ValueError, ValidationError, DecisionError) as exc:
+            self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return
+
+    def _authorized(self) -> bool:
+        expected = self.api_token
+        if not expected:
+            return False
+        supplied = self.headers.get("Authorization", "")
+        return hmac.compare_digest(supplied, f"Bearer {expected}")
+
+    def _json(self) -> dict[str, Any]:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 1_048_576:
+            raise ValueError("INVALID_BODY_LENGTH")
+        value = json.loads(self.rfile.read(length))
+        if not isinstance(value, dict):
+            raise ValueError("JSON_OBJECT_REQUIRED")
+        return value
+
+    def _send(self, status: HTTPStatus, value: dict[str, Any]) -> None:
+        payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+
+
+def _policy(body: dict[str, Any]) -> Policy:
+    return Policy(
+        policy_id=body["policy_id"], version=int(body["version"]),
+        approved_agents=frozenset(body["approved_agents"]),
+        allowed_action_types=frozenset(body["allowed_action_types"]),
+        allowed_recipients=frozenset(body.get("allowed_recipients", [])),
+        approved_sources=dict(body["approved_sources"]), max_value=int(body["max_value"]),
+        required_sources=frozenset(body["required_sources"]),
+        minimum_attestations=int(body["minimum_attestations"]),
+        maximum_age_seconds=int(body["maximum_age_seconds"]),
+        intent_ttl_seconds=int(body["intent_ttl_seconds"]),
+        repair_window_seconds=int(body["repair_window_seconds"]), active=bool(body.get("active", True)),
+    )
+
+
+def make_server(engine: AegisEngine, *, host: str = "127.0.0.1", port: int = 8081, api_token: str | None = None) -> ThreadingHTTPServer:
+    token = api_token if api_token is not None else os.environ.get("AEGIS_API_TOKEN", "")
+    if not token:
+        raise RuntimeError("AEGIS_API_TOKEN is required")
+    handler = type("ConfiguredAegisHandler", (AegisHandler,), {"engine": engine, "api_token": token})
+    return ThreadingHTTPServer((host, port), handler)
