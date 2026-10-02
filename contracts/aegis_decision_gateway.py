@@ -57,7 +57,7 @@ class AegisDecisionGateway(gl.Contract):
         if len(context.encode("utf-8")) > MAX_CONTEXT_BYTES:
             raise gl.vm.UserError("CONTEXT_LIMIT")
 
-        firewall = gl.contract.get_at(self.firewall)
+        firewall = gl.get_contract_at(self.firewall)
         intent = typing.cast(dict[str, typing.Any], firewall.view().get_intent(intent_id))
         if intent["state"] != STATE_PENDING:
             raise gl.vm.UserError("INTENT_NOT_PENDING")
