@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 from pathlib import Path
 
@@ -99,6 +100,27 @@ class AegisEngineTests(unittest.TestCase):
             self.engine.consume_receipt(receipt_id=receipt_id, consumer="vendor-1", action_intent_value="d" * 64)
         self.assertEqual(self.engine.intents[intent.intent_id].state, IntentState.AUTHORIZED)
 
+    def test_concurrent_receipt_consumption_has_one_winner(self):
+        intent = self.create()
+        authorized = self.engine.evaluate(intent_id=intent.intent_id, consensus_decision="AUTHORIZE")
+        receipt_id = authorized.receipt_id or ""
+
+        def consume() -> bool:
+            try:
+                self.engine.consume_receipt(
+                    receipt_id=receipt_id,
+                    consumer="vendor-1",
+                    action_intent_value=authorized.action_intent,
+                )
+                return True
+            except DecisionError:
+                return False
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(lambda _: consume(), range(8)))
+        self.assertEqual(sum(results), 1)
+        self.assertEqual(self.engine.intents[intent.intent_id].state, IntentState.CONSUMED)
+
     def test_invalid_evidence_requires_repair_then_preserves_action_binding(self):
         intent = self.create([attestation("primary", "bad"), attestation("secondary", "sig-secondary")])
         repaired = self.engine.evaluate(intent_id=intent.intent_id, consensus_decision="AUTHORIZE")
@@ -176,6 +198,24 @@ class AegisEngineTests(unittest.TestCase):
         result = self.engine.evaluate(intent_id=intent.intent_id, consensus_decision="AUTHORIZE")
         self.assertEqual(result.state, IntentState.REPAIR_REQUIRED)
         self.assertEqual(result.reason, "SOURCE_NOT_APPROVED")
+
+    def test_malformed_attestation_requires_repair(self):
+        malformed = Attestation(
+            provider_id="primary",
+            resource="https://primary.example/api/item",
+            published_at="not-a-timestamp",  # type: ignore[arg-type]
+            observed_at=990,
+            expires_at=2_000,
+            payload_hash="a" * 64,
+            signature="sig-primary",
+            statement="delivery-confirmed",
+        )
+        result = self.engine.evaluate(
+            intent_id=self.create([malformed, attestation("secondary", "sig-secondary")]).intent_id,
+            consensus_decision="AUTHORIZE",
+        )
+        self.assertEqual(result.state, IntentState.REPAIR_REQUIRED)
+        self.assertEqual(result.reason, "EVIDENCE_FORMAT")
 
     def test_policy_requires_explicit_recipient_allowlist(self):
         with self.assertRaises(ValueError):

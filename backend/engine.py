@@ -5,8 +5,8 @@ from __future__ import annotations
 # pyright: reportMissingImports=false
 
 import hashlib
+import threading
 import time
-from dataclasses import asdict
 from typing import Any, Callable, Protocol, cast
 
 from .models import (
@@ -15,9 +15,6 @@ from .models import (
     Intent,
     IntentState,
     MAX_ATTESTATIONS,
-    MAX_PROVIDER_ID_BYTES,
-    MAX_RESOURCE_BYTES,
-    MAX_STATEMENT_BYTES,
     Policy,
     Receipt,
     _safe_https_reference,
@@ -91,6 +88,7 @@ class AegisEngine:
         self.verifier = verifier
         self.clock = clock
         self.store = store
+        self._lock = threading.RLock()
         self.policies: dict[str, Policy] = {}
         self.intents: dict[str, Intent] = {}
         self.receipts: dict[str, Receipt] = {}
@@ -100,12 +98,13 @@ class AegisEngine:
                 self._restore(snapshot)
 
     def register_policy(self, policy: Policy) -> None:
-        policy.validate()
-        key = f"{policy.policy_id}:{policy.version}"
-        if key in self.policies:
-            raise ValidationError("POLICY_VERSION_ALREADY_EXISTS")
-        self.policies[key] = policy
-        self._persist()
+        with self._lock:
+            policy.validate()
+            key = f"{policy.policy_id}:{policy.version}"
+            if key in self.policies:
+                raise ValidationError("POLICY_VERSION_ALREADY_EXISTS")
+            self.policies[key] = policy
+            self._persist()
 
     def create_intent(
         self,
@@ -121,145 +120,150 @@ class AegisEngine:
         payload_hash: str,
         attestations: list[Attestation],
     ) -> Intent:
-        policy = self._policy(policy_id, policy_version)
-        if intent_id in self.intents:
-            raise ValidationError("INTENT_ALREADY_EXISTS")
-        if not _is_digest(intent_id) or not _is_digest(payload_hash):
-            raise ValidationError("DIGEST_FORMAT")
-        if len(attestations) > MAX_ATTESTATIONS:
-            raise ValidationError("EVIDENCE_COUNT")
-        if value < 0:
-            raise ValidationError("VALUE_NEGATIVE")
-        if not all((agent, action_type, target, recipient)):
-            raise ValidationError("ACTION_FIELDS_EMPTY")
-        now = self.clock()
-        expires_at = now + policy.intent_ttl_seconds
-        subject = action_subject(
-            agent=agent,
-            action_type=action_type,
-            target=target,
-            recipient=recipient,
-            value=value,
-            payload_hash=payload_hash,
-        )
-        record = Intent(
-            intent_id=intent_id,
-            policy_id=policy_id,
-            policy_version=policy_version,
-            agent=agent,
-            action_type=action_type,
-            target=target,
-            recipient=recipient,
-            value=value,
-            payload_hash=payload_hash,
-            created_at=now,
-            expires_at=expires_at,
-            repair_deadline=expires_at + policy.repair_window_seconds,
-            action_subject=subject,
-            action_intent=action_intent(
+        with self._lock:
+            policy = self._policy(policy_id, policy_version)
+            if intent_id in self.intents:
+                raise ValidationError("INTENT_ALREADY_EXISTS")
+            if not _is_digest(intent_id) or not _is_digest(payload_hash):
+                raise ValidationError("DIGEST_FORMAT")
+            if len(attestations) > MAX_ATTESTATIONS:
+                raise ValidationError("EVIDENCE_COUNT")
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValidationError("VALUE_FORMAT")
+            if not all(isinstance(field, str) and field for field in (agent, action_type, target, recipient)):
+                raise ValidationError("ACTION_FIELDS_EMPTY")
+            now = self.clock()
+            expires_at = now + policy.intent_ttl_seconds
+            subject = action_subject(
+                agent=agent,
+                action_type=action_type,
+                target=target,
+                recipient=recipient,
+                value=value,
+                payload_hash=payload_hash,
+            )
+            record = Intent(
                 intent_id=intent_id,
-                subject=subject,
                 policy_id=policy_id,
                 policy_version=policy_version,
-            ),
-            attestations=list(attestations),
-        )
-        self.intents[intent_id] = record
-        self._persist()
-        return record
+                agent=agent,
+                action_type=action_type,
+                target=target,
+                recipient=recipient,
+                value=value,
+                payload_hash=payload_hash,
+                created_at=now,
+                expires_at=expires_at,
+                repair_deadline=expires_at + policy.repair_window_seconds,
+                action_subject=subject,
+                action_intent=action_intent(
+                    intent_id=intent_id,
+                    subject=subject,
+                    policy_id=policy_id,
+                    policy_version=policy_version,
+                ),
+                attestations=list(attestations),
+            )
+            self.intents[intent_id] = record
+            self._persist()
+            return record
 
     def evaluate(self, *, intent_id: str, consensus_decision: str) -> Intent:
-        intent = self._intent(intent_id)
-        now = self.clock()
-        if intent.state in TERMINAL_STATES:
-            raise DecisionError("TERMINAL_INTENT")
-        if now >= intent.expires_at:
-            intent.state = IntentState.EXPIRED
-            intent.reason = "INTENT_EXPIRED"
+        with self._lock:
+            intent = self._intent(intent_id)
+            now = self.clock()
+            if intent.state in TERMINAL_STATES:
+                raise DecisionError("TERMINAL_INTENT")
+            if now >= intent.expires_at:
+                intent.state = IntentState.EXPIRED
+                intent.reason = "INTENT_EXPIRED"
+                self._persist()
+                return intent
+            policy = self._policy(intent.policy_id, intent.policy_version)
+            deterministic_reason = self._deterministic_failure(intent, policy)
+            if deterministic_reason:
+                intent.state = IntentState.DENIED
+                intent.reason = deterministic_reason
+                self._persist()
+                return intent
+            evidence_reason = self._evidence_failure(intent, policy, now)
+            if evidence_reason:
+                intent.state = IntentState.REPAIR_REQUIRED
+                intent.reason = evidence_reason
+                self._persist()
+                return intent
+            if consensus_decision not in {"AUTHORIZE", "DENY"}:
+                raise DecisionError("INVALID_CONSENSUS_DECISION")
+            if consensus_decision == "DENY":
+                intent.state = IntentState.DENIED
+                intent.reason = "CONSENSUS_DENIED"
+            else:
+                intent.state = IntentState.AUTHORIZED
+                intent.reason = "CONSENSUS_AUTHORIZED"
+                receipt_id = digest_hex({"domain": "AEGIS/RECEIPT/V1", "intent": intent.intent_id, "action_intent": intent.action_intent})
+                intent.receipt_id = receipt_id
+                self.receipts[receipt_id] = Receipt(
+                    receipt_id=receipt_id,
+                    intent_id=intent.intent_id,
+                    action_intent=intent.action_intent,
+                    consumer=intent.recipient,
+                    expires_at=intent.expires_at,
+                )
             self._persist()
             return intent
-        policy = self._policy(intent.policy_id, intent.policy_version)
-        deterministic_reason = self._deterministic_failure(intent, policy)
-        if deterministic_reason:
-            intent.state = IntentState.DENIED
-            intent.reason = deterministic_reason
-            self._persist()
-            return intent
-        evidence_reason = self._evidence_failure(intent, policy, now)
-        if evidence_reason:
-            intent.state = IntentState.REPAIR_REQUIRED
-            intent.reason = evidence_reason
-            self._persist()
-            return intent
-        if consensus_decision not in {"AUTHORIZE", "DENY"}:
-            raise DecisionError("INVALID_CONSENSUS_DECISION")
-        if consensus_decision == "DENY":
-            intent.state = IntentState.DENIED
-            intent.reason = "CONSENSUS_DENIED"
-        else:
-            intent.state = IntentState.AUTHORIZED
-            intent.reason = "CONSENSUS_AUTHORIZED"
-            receipt_id = digest_hex({"domain": "AEGIS/RECEIPT/V1", "intent": intent.intent_id, "action_intent": intent.action_intent})
-            intent.receipt_id = receipt_id
-            self.receipts[receipt_id] = Receipt(
-                receipt_id=receipt_id,
-                intent_id=intent.intent_id,
-                action_intent=intent.action_intent,
-                consumer=intent.recipient,
-                expires_at=intent.expires_at,
-            )
-        self._persist()
-        return intent
 
     def replace_evidence(self, *, intent_id: str, caller: str, attestations: list[Attestation]) -> Intent:
-        intent = self._intent(intent_id)
-        now = self.clock()
-        if intent.state != IntentState.REPAIR_REQUIRED:
-            raise DecisionError("REPAIR_NOT_REQUIRED")
-        if caller != intent.agent:
-            raise DecisionError("AGENT_ONLY")
-        if now >= intent.repair_deadline:
-            intent.state = IntentState.EXPIRED
-            intent.reason = "REPAIR_DEADLINE_EXPIRED"
+        with self._lock:
+            intent = self._intent(intent_id)
+            now = self.clock()
+            if intent.state != IntentState.REPAIR_REQUIRED:
+                raise DecisionError("REPAIR_NOT_REQUIRED")
+            if caller != intent.agent:
+                raise DecisionError("AGENT_ONLY")
+            if now >= intent.repair_deadline:
+                intent.state = IntentState.EXPIRED
+                intent.reason = "REPAIR_DEADLINE_EXPIRED"
+                self._persist()
+                return intent
+            if _attestation_fingerprint(intent.attestations) == _attestation_fingerprint(attestations):
+                raise ValidationError("EVIDENCE_UNCHANGED")
+            if len(attestations) > MAX_ATTESTATIONS:
+                raise ValidationError("EVIDENCE_COUNT")
+            intent.attestations = list(attestations)
+            intent.evidence_revision += 1
+            intent.state = IntentState.PENDING
+            intent.reason = "EVIDENCE_REPLACED"
             self._persist()
             return intent
-        if _attestation_fingerprint(intent.attestations) == _attestation_fingerprint(attestations):
-            raise ValidationError("EVIDENCE_UNCHANGED")
-        if len(attestations) > MAX_ATTESTATIONS:
-            raise ValidationError("EVIDENCE_COUNT")
-        intent.attestations = list(attestations)
-        intent.evidence_revision += 1
-        intent.state = IntentState.PENDING
-        intent.reason = "EVIDENCE_REPLACED"
-        self._persist()
-        return intent
 
     def consume_receipt(self, *, receipt_id: str, consumer: str, action_intent_value: str) -> Receipt:
-        receipt = self.receipts.get(receipt_id)
-        if receipt is None:
-            raise DecisionError("RECEIPT_UNKNOWN")
-        intent = self._intent(receipt.intent_id)
-        if intent.state != IntentState.AUTHORIZED:
-            raise DecisionError("INTENT_NOT_AUTHORIZED")
-        if receipt.consumed_at is not None:
-            raise DecisionError("RECEIPT_ALREADY_CONSUMED")
-        if consumer != receipt.consumer:
-            raise DecisionError("CONSUMER_MISMATCH")
-        if action_intent_value != receipt.action_intent:
-            raise DecisionError("ACTION_INTENT_MISMATCH")
-        if self.clock() >= receipt.expires_at:
-            raise DecisionError("RECEIPT_EXPIRED")
-        receipt.consumed_at = self.clock()
-        intent.state = IntentState.CONSUMED
-        self._persist()
-        return receipt
+        with self._lock:
+            receipt = self.receipts.get(receipt_id)
+            if receipt is None:
+                raise DecisionError("RECEIPT_UNKNOWN")
+            intent = self._intent(receipt.intent_id)
+            if intent.state != IntentState.AUTHORIZED:
+                raise DecisionError("INTENT_NOT_AUTHORIZED")
+            if receipt.consumed_at is not None:
+                raise DecisionError("RECEIPT_ALREADY_CONSUMED")
+            if consumer != receipt.consumer:
+                raise DecisionError("CONSUMER_MISMATCH")
+            if action_intent_value != receipt.action_intent:
+                raise DecisionError("ACTION_INTENT_MISMATCH")
+            if self.clock() >= receipt.expires_at:
+                raise DecisionError("RECEIPT_EXPIRED")
+            receipt.consumed_at = self.clock()
+            intent.state = IntentState.CONSUMED
+            self._persist()
+            return receipt
 
     def snapshot(self) -> dict[str, object]:
-        return {
-            "policies": {key: policy.to_dict() for key, policy in self.policies.items()},
-            "intents": {key: intent.to_dict() for key, intent in self.intents.items()},
-            "receipts": {key: receipt.to_dict() for key, receipt in self.receipts.items()},
-        }
+        with self._lock:
+            return {
+                "policies": {key: policy.to_dict() for key, policy in self.policies.items()},
+                "intents": {key: intent.to_dict() for key, intent in self.intents.items()},
+                "receipts": {key: receipt.to_dict() for key, receipt in self.receipts.items()},
+            }
 
     def _deterministic_failure(self, intent: Intent, policy: Policy) -> str | None:
         if not policy.active:
@@ -281,12 +285,9 @@ class AegisEngine:
         valid_sources: set[str] = set()
         for attestation in intent.attestations:
             if (
-                not attestation.provider_id
-                or len(attestation.provider_id.encode("utf-8")) > MAX_PROVIDER_ID_BYTES
-                or len(attestation.resource.encode("utf-8")) > MAX_RESOURCE_BYTES
-                or len(attestation.statement.encode("utf-8")) > MAX_STATEMENT_BYTES
+                not _valid_attestation_shape(attestation)
             ):
-                return "EVIDENCE_FIELD_LIMIT"
+                return "EVIDENCE_FORMAT"
             if attestation.provider_id in seen:
                 return "EVIDENCE_DUPLICATE_PROVIDER"
             seen.add(attestation.provider_id)
@@ -364,12 +365,20 @@ class AegisEngine:
             self.receipts[key] = Receipt(**cast(dict[str, Any], value))
 
 
-def _is_digest(value: str) -> bool:
-    if len(value) != 64:
+def _is_digest(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
         return False
     try:
         bytes.fromhex(value)
     except ValueError:
+        return False
+    return True
+
+
+def _valid_attestation_shape(attestation: Attestation) -> bool:
+    try:
+        attestation.validate()
+    except (TypeError, UnicodeError, ValueError):
         return False
     return True
 

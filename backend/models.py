@@ -27,6 +27,7 @@ MAX_ATTESTATIONS = 8
 MAX_PROVIDER_ID_BYTES = 128
 MAX_RESOURCE_BYTES = 2048
 MAX_STATEMENT_BYTES = 8192
+MAX_SIGNATURE_BYTES = 512
 
 
 def _validate_json_value(value: Any) -> None:
@@ -90,6 +91,30 @@ class Attestation:
     payload_hash: str
     signature: str
     statement: str = ""
+
+    def validate(self) -> None:
+        text_fields = {
+            "provider_id": self.provider_id,
+            "resource": self.resource,
+            "payload_hash": self.payload_hash,
+            "signature": self.signature,
+            "statement": self.statement,
+        }
+        if any(not isinstance(value, str) for value in text_fields.values()):
+            raise ValueError("attestation text fields must be strings")
+        timestamps = (self.published_at, self.observed_at, self.expires_at)
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in timestamps):
+            raise ValueError("attestation timestamps must be integers")
+        if not self.provider_id or not self.resource or not self.signature:
+            raise ValueError("attestation required fields cannot be empty")
+        if len(self.provider_id.encode("utf-8")) > MAX_PROVIDER_ID_BYTES:
+            raise ValueError("provider id exceeds limit")
+        if len(self.resource.encode("utf-8")) > MAX_RESOURCE_BYTES:
+            raise ValueError("resource exceeds limit")
+        if len(self.statement.encode("utf-8")) > MAX_STATEMENT_BYTES:
+            raise ValueError("statement exceeds limit")
+        if len(self.signature.encode("utf-8")) > MAX_SIGNATURE_BYTES:
+            raise ValueError("signature exceeds limit")
 
     def signed_payload(self) -> dict[str, Any]:
         return {

@@ -32,6 +32,11 @@ class JsonStore:
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)
             os.chmod(self.path, 0o600)
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         except BaseException:
             try:
                 os.unlink(temporary)
