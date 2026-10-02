@@ -16,17 +16,19 @@ The backend currently includes:
 
 Verified locally:
 
-- 14 backend unit/integration tests pass;
+- 15 backend unit/integration tests pass;
 - Python compilation passes;
 - Pyright passes with 0 errors, 0 warnings, and 0 informations;
-- GenLayer AST lint passes all 3 checks.
+- GenLayer AST lint passes all 3 checks;
+- semantic GenLayer validation passes with the downloaded `v0.3.0-rc7`
+  runner;
+- ABI schema extraction passes;
+- strict contract type-checking passes with 0 errors and 0 warnings.
 
-The installed `genvm-lint` package can semantically validate the older local
-artifact, but its Python 3.12 schema loader rejects the `u256` NewType used by
-that artifact. The current RC8 runner bundle is not available in the local
-cache, so no target-network deployment or semantic release claim is made from
-that tooling result. The contract remains pinned to the known RC8 dependency
-hash and must be validated with the matching RC toolchain before deployment.
+The contract remains pinned to the known RC8 dependency hash. The available
+linter reports that `v0.3.0-rc7` is newer than that dependency and validates the
+source successfully, but this is still local toolchain evidence—not proof of a
+Bradbury/Studio deployment or finalized on-chain behavior.
 
 The local environment could download the pinned cryptography wheel only far
 enough to begin installation; the installer did not complete, so the real

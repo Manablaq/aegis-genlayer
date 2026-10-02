@@ -31,6 +31,7 @@ DOMAIN_RECEIPT = hashlib.sha256(b"AEGIS/V1/RECEIPT_ID").digest()
 MAX_POLICY_ID_BYTES = 128
 MAX_ACTION_HASH_BYTES = 32
 MAX_EVIDENCE_DIGEST_BYTES = 32
+MAX_REASON_BYTES = 256
 
 
 @allow_storage
@@ -220,6 +221,8 @@ class AegisActionFirewall(gl.Contract):
     def mark_repair_required(self, intent_id: bytes, reason: str) -> None:
         if gl.message.sender_address != self.decision_gateway:
             raise gl.vm.UserError("GATEWAY_ONLY")
+        if not reason or len(reason.encode("utf-8")) > MAX_REASON_BYTES:
+            raise gl.vm.UserError("REASON_LIMIT")
         intent = self._intent(intent_id)
         if intent.state != STATE_PENDING:
             raise gl.vm.UserError("NOT_PENDING")
