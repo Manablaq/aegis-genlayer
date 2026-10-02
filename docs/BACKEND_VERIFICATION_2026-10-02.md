@@ -16,7 +16,8 @@ The backend currently includes:
 
 Verified locally:
 
-- 15 backend unit/integration tests pass;
+- 16 backend unit/integration tests pass, including the production Ed25519
+  verifier and tamper rejection;
 - Python compilation passes;
 - Pyright passes with 0 errors, 0 warnings, and 0 informations;
 - GenLayer AST lint passes all 3 checks;
@@ -30,10 +31,9 @@ linter reports that `v0.3.0-rc7` is newer than that dependency and validates the
 source successfully, but this is still local toolchain evidence—not proof of a
 Bradbury/Studio deployment or finalized on-chain behavior.
 
-The local environment could download the pinned cryptography wheel only far
-enough to begin installation; the installer did not complete, so the real
-Ed25519 implementation was not runtime-smoke-tested in this environment. The
-server still fails closed when that dependency is absent; the test verifier is
+The production `cryptography` dependency and its `cffi` runtime dependency are
+installed and the real Ed25519 path has been smoke-tested. The server still
+fails closed when the production dependency is absent; the static verifier is
 never selected by `backend.server`.
 
 No frontend work has started.

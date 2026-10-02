@@ -68,9 +68,9 @@ class Ed25519Verifier:
             return False
         try:
             key.verify(bytes.fromhex(attestation.signature), canonical_bytes(attestation.signed_payload()))
-            return True
-        except (ValueError, TypeError):
+        except Exception:  # cryptography raises InvalidSignature for hostile evidence
             return False
+        return True
 
 
 def _now() -> int:
