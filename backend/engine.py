@@ -330,8 +330,10 @@ class AegisEngine:
     def _restore(self, snapshot: dict[str, object]) -> None:
         # Restore is deliberately strict: malformed persisted state prevents
         # startup instead of silently dropping security-critical records.
-        policy_values = cast(dict[str, Any], snapshot.get("policies", {}))
+        policy_values = _mapping(snapshot, "policies")
         for key, value in policy_values.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                raise ValueError("invalid persisted policy record")
             raw = cast(dict[str, Any], value)
             policy = Policy(
                 policy_id=raw["policy_id"], version=int(raw["version"]),
@@ -346,11 +348,15 @@ class AegisEngine:
                 repair_window_seconds=int(raw["repair_window_seconds"]), active=bool(raw["active"]),
             )
             policy.validate()
+            if key != f"{policy.policy_id}:{policy.version}":
+                raise ValueError("persisted policy key mismatch")
             self.policies[key] = policy
-        intent_values = cast(dict[str, Any], snapshot.get("intents", {}))
+        intent_values = _mapping(snapshot, "intents")
         for key, value in intent_values.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                raise ValueError("invalid persisted intent record")
             raw = cast(dict[str, Any], value)
-            self.intents[key] = Intent(
+            intent = Intent(
                 intent_id=raw["intent_id"], policy_id=raw["policy_id"], policy_version=int(raw["policy_version"]),
                 agent=raw["agent"], action_type=raw["action_type"], target=raw["target"], recipient=raw["recipient"],
                 value=int(raw["value"]), payload_hash=raw["payload_hash"], created_at=int(raw["created_at"]),
@@ -360,9 +366,74 @@ class AegisEngine:
                 reason=raw["reason"], attestations=[Attestation(**item) for item in raw["attestations"]],
                 receipt_id=raw["receipt_id"],
             )
-        receipt_values = cast(dict[str, Any], snapshot.get("receipts", {}))
+            if key != intent.intent_id or not _is_digest(intent.intent_id) or not _is_digest(intent.payload_hash):
+                raise ValueError("persisted intent identity mismatch")
+            if f"{intent.policy_id}:{intent.policy_version}" not in self.policies:
+                raise ValueError("persisted intent policy missing")
+            if not all(isinstance(field, str) and field for field in (intent.agent, intent.action_type, intent.target, intent.recipient)):
+                raise ValueError("persisted intent action fields invalid")
+            if isinstance(intent.value, bool) or intent.value < 0:
+                raise ValueError("persisted intent value invalid")
+            if any(isinstance(value, bool) or not isinstance(value, int) for value in (intent.created_at, intent.expires_at, intent.repair_deadline, intent.evidence_revision)):
+                raise ValueError("persisted intent timestamps invalid")
+            if not intent.created_at <= intent.expires_at <= intent.repair_deadline:
+                raise ValueError("persisted intent deadline order invalid")
+            if intent.evidence_revision < 0:
+                raise ValueError("persisted evidence revision invalid")
+            if intent.action_subject != action_subject(
+                agent=intent.agent,
+                action_type=intent.action_type,
+                target=intent.target,
+                recipient=intent.recipient,
+                value=intent.value,
+                payload_hash=intent.payload_hash,
+            ):
+                raise ValueError("persisted action subject mismatch")
+            if intent.action_intent != action_intent(
+                intent_id=intent.intent_id,
+                subject=intent.action_subject,
+                policy_id=intent.policy_id,
+                policy_version=intent.policy_version,
+            ):
+                raise ValueError("persisted action intent mismatch")
+            if not isinstance(intent.attestations, list):
+                raise ValueError("persisted attestations invalid")
+            for attestation in intent.attestations:
+                attestation.validate()
+            self.intents[key] = intent
+        receipt_values = _mapping(snapshot, "receipts")
         for key, value in receipt_values.items():
-            self.receipts[key] = Receipt(**cast(dict[str, Any], value))
+            if not isinstance(key, str) or not isinstance(value, dict):
+                raise ValueError("invalid persisted receipt record")
+            receipt = Receipt(**cast(dict[str, Any], value))
+            if key != receipt.receipt_id or not _is_digest(receipt.receipt_id) or not _is_digest(receipt.intent_id):
+                raise ValueError("persisted receipt identity mismatch")
+            intent = self.intents.get(receipt.intent_id)
+            if intent is None or receipt.action_intent != intent.action_intent or receipt.consumer != intent.recipient:
+                raise ValueError("persisted receipt binding mismatch")
+            if receipt.expires_at != intent.expires_at:
+                raise ValueError("persisted receipt expiry mismatch")
+            if receipt.consumed_at is not None and (isinstance(receipt.consumed_at, bool) or not isinstance(receipt.consumed_at, int)):
+                raise ValueError("persisted receipt consumption timestamp invalid")
+            self.receipts[key] = receipt
+        for intent in self.intents.values():
+            receipt = self.receipts.get(intent.receipt_id or "")
+            if intent.state in {IntentState.AUTHORIZED, IntentState.CONSUMED}:
+                if receipt is None:
+                    raise ValueError("persisted authorized intent has no receipt")
+                if intent.state == IntentState.CONSUMED and receipt.consumed_at is None:
+                    raise ValueError("persisted consumed intent has unconsumed receipt")
+                if intent.state == IntentState.AUTHORIZED and receipt.consumed_at is not None:
+                    raise ValueError("persisted authorized intent has consumed receipt")
+            elif intent.receipt_id is not None:
+                raise ValueError("persisted non-authorized intent has receipt")
+
+
+def _mapping(value: dict[str, object], field: str) -> dict[str, object]:
+    raw = value.get(field)
+    if not isinstance(raw, dict):
+        raise ValueError(f"persisted {field} must be an object")
+    return raw
 
 
 def _is_digest(value: object) -> bool:

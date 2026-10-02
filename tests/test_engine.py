@@ -178,6 +178,34 @@ class AegisEngineTests(unittest.TestCase):
             )
             self.assertEqual(restored.intents[intent.intent_id].state, IntentState.CONSUMED)
 
+    def test_restart_rejects_tampered_action_binding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = JsonStore(Path(directory) / "aegis.state.json")
+            engine = AegisEngine(verifier=self.verifier, clock=self.clock, store=store)
+            engine.register_policy(policy())
+            intent = engine.create_intent(
+                intent_id="f" * 64,
+                policy_id="vendor-payment",
+                policy_version=1,
+                agent="agent-1",
+                action_type="release_payment",
+                target="invoice-42",
+                recipient="vendor-1",
+                value=500,
+                payload_hash="c" * 64,
+                attestations=[attestation("primary", "sig-primary"), attestation("secondary", "sig-secondary")],
+            )
+            engine.evaluate(intent_id=intent.intent_id, consensus_decision="AUTHORIZE")
+            snapshot = engine.snapshot()
+            intents = snapshot["intents"]
+            assert isinstance(intents, dict)
+            record = intents[intent.intent_id]
+            assert isinstance(record, dict)
+            record["action_subject"] = "0" * 64
+            store.save(snapshot)
+            with self.assertRaises(ValueError):
+                AegisEngine(verifier=self.verifier, clock=self.clock, store=store)
+
     def test_invalid_consensus_decision_does_not_mutate_state(self):
         intent = self.create()
         with self.assertRaises(DecisionError):
