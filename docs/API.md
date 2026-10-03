@@ -9,6 +9,13 @@ Authorization: Bearer <AEGIS_API_TOKEN>
 Content-Type: application/json
 ```
 
+Browser clients must be explicitly allowlisted. Set `AEGIS_ALLOWED_ORIGINS` to
+a comma-separated list of exact origins, for example
+`http://127.0.0.1:5173,https://aegis-genlayer.vercel.app`. The server never uses
+`Access-Control-Allow-Origin: *`, and the bearer token is not accepted through
+cookies or query parameters. Local development defaults to the two Vite
+origins when `AEGIS_ALLOWED_ORIGINS` is unset.
+
 ## Endpoints
 
 ### `GET /health`
@@ -29,10 +36,11 @@ Registers an immutable policy version. The request contains the policy model:
 
 ### `POST /v1/intents`
 
-Creates an intent after validating the policy, action subject, evidence
-signatures, freshness, source allowlist, recipient allowlist, and value/TTL
-limits. The request includes the intent identity, policy version, action data,
-payload hash, and an `attestations` array.
+Creates an intent after validating the policy, action subject, and value/TTL
+limits. Evidence signatures, freshness, source allowlists, and recipient
+allowlists are evaluated by the subsequent consensus decision. The request
+includes the intent identity, policy version, action data, payload hash, and an
+`attestations` array.
 
 ### `GET /v1/intents/{intent_id}`
 

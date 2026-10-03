@@ -46,6 +46,32 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(status, 401)
         self.assertEqual(body["error"], "UNAUTHORIZED")
 
+    def test_cors_preflight_is_explicit_and_origin_bound(self):
+        connection = http.client.HTTPConnection(self.host, self.port)
+        connection.request(
+            "OPTIONS",
+            "/v1/intents",
+            headers={
+                "Origin": "http://127.0.0.1:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+        response = connection.getresponse()
+        response.read()
+        self.assertEqual(response.status, 204)
+        self.assertEqual(response.getheader("Access-Control-Allow-Origin"), "http://127.0.0.1:5173")
+        self.assertIn("Authorization", response.getheader("Access-Control-Allow-Headers", ""))
+        connection.close()
+
+        connection = http.client.HTTPConnection(self.host, self.port)
+        connection.request("OPTIONS", "/v1/intents", headers={"Origin": "https://untrusted.example"})
+        response = connection.getresponse()
+        response.read()
+        self.assertEqual(response.status, 204)
+        self.assertIsNone(response.getheader("Access-Control-Allow-Origin"))
+        connection.close()
+
     def test_policy_registration_is_reachable(self):
         status, body = self.request(
             "POST",

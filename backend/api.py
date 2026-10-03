@@ -14,6 +14,21 @@ from .models import Attestation, Policy
 class AegisHandler(BaseHTTPRequestHandler):
     engine: AegisEngine
     api_token: str
+    allowed_origins: frozenset[str]
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        """Handle browser preflight without weakening endpoint authentication."""
+        path = self.path.split("?", 1)[0]
+        known_path = path == "/health" or path == "/v1/policies" or path == "/v1/intents" or path.startswith("/v1/intents/") or path == "/v1/receipts/consume"
+        if not known_path:
+            self._send(HTTPStatus.NOT_FOUND, {"error": "NOT_FOUND"})
+            return
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self._send_cors_headers()
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
@@ -96,11 +111,18 @@ class AegisHandler(BaseHTTPRequestHandler):
     def _send(self, status: HTTPStatus, value: dict[str, Any]) -> None:
         payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
+        self._send_cors_headers()
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(payload)
+
+    def _send_cors_headers(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if origin and origin in self.allowed_origins:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
 
 
 def _policy(body: dict[str, Any]) -> Policy:
@@ -118,9 +140,27 @@ def _policy(body: dict[str, Any]) -> Policy:
     )
 
 
-def make_server(engine: AegisEngine, *, host: str = "127.0.0.1", port: int = 8081, api_token: str | None = None) -> ThreadingHTTPServer:
+def make_server(
+    engine: AegisEngine,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8081,
+    api_token: str | None = None,
+    allowed_origins: set[str] | frozenset[str] | None = None,
+) -> ThreadingHTTPServer:
     token = api_token if api_token is not None else os.environ.get("AEGIS_API_TOKEN", "")
     if not token:
         raise RuntimeError("AEGIS_API_TOKEN is required")
-    handler = type("ConfiguredAegisHandler", (AegisHandler,), {"engine": engine, "api_token": token})
+    if allowed_origins is None:
+        configured_origins = os.environ.get("AEGIS_ALLOWED_ORIGINS", "")
+        allowed_origins = frozenset(
+            origin.strip().rstrip("/")
+            for origin in configured_origins.split(",")
+            if origin.strip()
+        ) or frozenset({"http://127.0.0.1:5173", "http://localhost:5173"})
+    handler = type(
+        "ConfiguredAegisHandler",
+        (AegisHandler,),
+        {"engine": engine, "api_token": token, "allowed_origins": frozenset(allowed_origins)},
+    )
     return ThreadingHTTPServer((host, port), handler)

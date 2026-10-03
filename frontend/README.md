@@ -27,8 +27,30 @@ npm run build
 The production build is static and can be served by any static host. The page
 does not fabricate a backend response: the proof surface displays the verified
 Bradbury lifecycle and contract identity already documented in the repository.
-The access request form is deliberately local until an authenticated tenant
-endpoint is connected.
+The public proof surface is read-only until an operator connects an authenticated
+tenant endpoint in the control plane. The bearer token is held in React memory
+for the current tab only; it is never bundled into the build or written to
+local storage.
+
+## Operator control plane
+
+The `Control plane` section connects to the backend HTTP API and exposes the
+same guarded operations as the API: register an immutable policy version,
+create an intent, evaluate it, replace evidence during `REPAIR_REQUIRED`,
+refresh persisted state, and consume a receipt once. The UI does not fabricate
+provider attestations or claim that a request succeeded when the backend
+rejects it.
+
+For a browser-to-backend session, configure the API with an exact origin:
+
+```sh
+AEGIS_API_TOKEN='use-a-secret-token' \
+AEGIS_ALLOWED_ORIGINS='http://127.0.0.1:5173,https://aegis-genlayer.vercel.app' \
+python -m backend.server
+```
+
+The backend endpoint and token are entered interactively in the control plane;
+neither belongs in `VITE_*` build variables or committed files.
 
 ## Interaction map
 
