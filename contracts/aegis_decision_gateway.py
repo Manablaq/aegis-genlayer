@@ -19,6 +19,7 @@ DECISION_AUTHORIZE = "AUTHORIZE"
 DECISION_DENY = "DENY"
 DOMAIN_DECISION = hashlib.sha256(b"AEGIS/V1/DECISION_COMMITMENT").digest()
 MAX_CONTEXT_BYTES = 4096
+MAX_REASON_BYTES = 256
 
 
 def _hash(value: bytes) -> bytes:
@@ -48,6 +49,22 @@ class AegisDecisionGateway(gl.Contract):
             raise gl.vm.UserError("FIREWALL_ALREADY_BOUND_OR_ZERO")
         self.firewall = firewall
         self.bound = True
+
+    @gl.public.write
+    def request_repair(self, intent_id: bytes, reason: str) -> None:
+        _require_digest(intent_id, "INTENT_ID")
+        if gl.message.sender_address != self.owner:
+            raise gl.vm.UserError("OWNER_ONLY")
+        if not self.bound:
+            raise gl.vm.UserError("FIREWALL_UNBOUND")
+        if not reason or len(reason.encode("utf-8")) > MAX_REASON_BYTES:
+            raise gl.vm.UserError("REASON_LIMIT")
+
+        firewall = gl.get_contract_at(self.firewall)
+        intent = typing.cast(dict[str, typing.Any], firewall.view().get_intent(intent_id))
+        if intent["state"] != STATE_PENDING:
+            raise gl.vm.UserError("INTENT_NOT_PENDING")
+        firewall.emit().mark_repair_required(intent_id, reason)
 
     @gl.public.write
     def decide(self, intent_id: bytes, context: str) -> str:
