@@ -36,11 +36,19 @@ endpoint is connected.
 - The three protocol tabs update the detail panel without a page reload.
 - The proof card copies the verified contract ID, with an async Clipboard API
   path and a legacy `execCommand` fallback for restricted browser contexts.
+- The wallet surface uses the browser's EIP-1193 provider when one exists. It
+  listens for account/network changes, shows a connection error instead of
+  faking state, supports address copy, and clears the local session on
+  disconnect. It never handles seed phrases or private keys.
 - FAQ rows are keyboard-accessible accordions.
 - The responsive menu opens and closes on small screens and closes after a
   navigation choice.
 - “Get protected” and “Start with Aegis” open the local preview dialog. The
-  form validates name and email and shows an explicit success state.
+  form validates name and email and shows an explicit local-only success state;
+  it does not claim to send an email or silently call a missing backend.
+- Proof rows are selectable controls that expose the selected lifecycle detail.
+  The proof board is explicitly labeled as a verified Bradbury record rather
+  than a fabricated live event stream.
 - The GitHub icon is the only external navigation and opens the public repo in
   a new tab.
 
