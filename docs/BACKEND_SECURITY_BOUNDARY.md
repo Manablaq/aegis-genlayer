@@ -21,7 +21,7 @@ attestation envelope. The production HTTP server requires `cryptography` and
 uses `Ed25519Verifier`; the test suite uses `StaticVerifier` only as an
 explicit test double. A missing production crypto dependency fails startup.
 
-The known redirect-provenance weakness is not used as a security primitive:
-the signed envelope binds the provider, canonical resource, timestamps, and
-payload digest. The target GenLayer runtime still requires independent
-verification before deployment; this design does not claim that target proof.
+Redirect provenance is not used as a security primitive: the signed envelope
+binds the provider, canonical resource, timestamps, and payload digest. The
+current Bradbury deployment and finalized state-transition evidence are
+recorded in `docs/BRADBURY_DEPLOYMENT_2026-10-02.md`.

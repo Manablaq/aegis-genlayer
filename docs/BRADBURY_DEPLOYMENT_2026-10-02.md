@@ -59,18 +59,32 @@ action-intent digest, and repair deadline.
 ## Release boundary
 
 The backend source and local verification are complete, and the current
-repair-capable contracts are deployed on Bradbury. The live release proof is
-not complete until the repair transaction reaches `READY_TO_FINALIZE`, is
-finalized, and the following stateful checks are recorded from Bradbury:
+repair-capable contracts are deployed on Bradbury. The following stateful
+release checks are recorded from finalized Bradbury transactions:
 
 1. `REPAIR_REQUIRED` with reason `SOURCE_NOT_APPROVED`. **Verified.**
 2. Evidence replacement returning to `PENDING`, with revision incremented and
    the action subject, action-intent digest, and repair deadline unchanged.
    **Verified.**
 3. A finalized `AUTHORIZE` transition after replacement. The transaction is
-   submitted and awaiting its finalization window.
+   `0xc298baf9300f7603265c99415e9f727b37326e0d43099b1f17bff1ad2abd232c`,
+   finalized with 5/5 agreement, and the intent reads `AUTHORIZED` with
+   reason `CONSENSUS_AUTHORIZED` and receipt
+   `0xc8f91ee0e8cb3690d1f57d9dd366ff9a78975db4479c500b4daee2df4de7b238`.
 4. A separate finalized `DENY` transition with no receipt. The decision
-   transaction is finalized; terminal state read-back remains to be recorded.
-5. Receipt consumption exactly once and finalized replay rejection.
+   transaction is finalized and terminal state read-back is `DENIED` with no
+   receipt. **Verified.**
+5. Receipt consumption exactly once and finalized replay rejection. The first
+   consumption transaction is
+   `0x891a37968297da64e429840c7cd72beed9abc9e1849992f64e9c853581550442` and
+   finalized with 5/5 agreement; the intent now reads `CONSUMED` with reason
+   `CONSUMED`. The replay transaction is
+   `0x1cfb5e6d096c39f81411a79b4d852de247609523cc649c6e4366edd2fbe55b14` and
+   finalized with 5/5 `DISAGREE`, `FINISHED_WITH_ERROR`, and trace error
+   `RECEIPT_CONSUMED_OR_UNKNOWN`; the final state remains `CONSUMED`.
+
+All five stateful release checks above are now verified from finalized
+Bradbury transactions. Timeout/restart semantics remain covered by the local
+restart-safe backend tests; no automatic resend or replacement is used.
 
 No frontend work is represented by this document.

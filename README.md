@@ -39,5 +39,6 @@ The API binds to `127.0.0.1:8081` by default. It has no frontend dependency.
 
 The GenLayer contract is an adapter for registering policies, submitting
 intents, recording finalized decisions, and consuming receipts. The service
-does not claim a target-network deployment until the matching contract source,
-runtime, and finalized behavior are independently verified.
+source is deployed on Bradbury and the finalized live behavior is recorded in
+`docs/BRADBURY_DEPLOYMENT_2026-10-02.md`. The repository remains backend-only;
+the frontend is the next workstream.
