@@ -1,49 +1,100 @@
 # Aegis
 
-Aegis is a fail-closed action firewall for autonomous AI agents. It turns a
-policy-approved agent intent into a single-use execution receipt only after
-the evidence and the GenLayer consensus decision satisfy the policy.
+Aegis is a fail-closed action firewall for autonomous AI agents. It converts
+a policy-approved intent into a single-use execution receipt only when the
+policy, signed evidence, and GenLayer consensus decision all agree.
 
-This repository is backend-only for now. The frontend is intentionally out of
-scope until the contract-independent backend state machine, persistence, API,
-and adversarial tests are complete.
+The project is backend-complete and deployed/tested on GenLayer Bradbury. The
+frontend is intentionally the next workstream; no frontend code is included
+in this repository yet.
 
-## Backend invariants
+## Project status
 
-- No privileged bypass path exists in the state machine.
+| Area | Status |
+| --- | --- |
+| Contract-independent backend | Complete |
+| API, persistence, and restart recovery | Complete |
+| Adversarial and concurrency tests | Complete |
+| Bradbury deployment and finalized live proof | Complete |
+| Frontend | Next workstream |
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — components, lifecycle, and trust boundaries.
+- [HTTP API](docs/API.md) — endpoints, authentication, and error behavior.
+- [Security boundary](docs/BACKEND_SECURITY_BOUNDARY.md) — fail-closed guarantees and threat assumptions.
+- [Verification report](docs/BACKEND_VERIFICATION_2026-10-02.md) — local and live verification scope.
+- [Bradbury evidence](docs/BRADBURY_DEPLOYMENT_2026-10-02.md) — deployed addresses and finalized transaction evidence.
+
+## Security invariants
+
+- There is no privileged bypass path in the state machine.
 - Invalid, stale, conflicting, missing, or unverifiable evidence never
   authorizes an action.
 - Every receipt is bound to the exact intent, action subject, consumer, and
-  expiry, and can be consumed once.
-- Evidence repair increments a revision without changing the action subject
-  or repair deadline.
-- Restart recovery uses persisted state; it never resends a transaction.
-- Redirect provenance is not trusted. Production attestations must be signed
-  by an approved provider and bind the canonical resource and payload.
+  expiry, and can be consumed only once.
+- Evidence repair increments a revision without changing the action subject,
+  action-intent digest, or repair deadline.
+- Restart recovery uses persisted state and never resends a transaction
+  automatically.
+- Redirect provenance is not trusted as authorization. Provider attestations
+  bind the canonical resource, timestamps, and payload digest.
 
-## Run the backend tests
+## Quick start
+
+Create an isolated environment, install the production dependencies, and run
+the backend tests:
 
 ```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-The HTTP service is started with:
+Start the HTTP service with an explicit API token:
 
 ```sh
-AEGIS_API_TOKEN='replace-me' python3 -m backend.server
+AEGIS_API_TOKEN='replace-with-a-secret' .venv/bin/python -m backend.server
 ```
 
-The API binds to `127.0.0.1:8081` by default. It has no frontend dependency.
+The service listens on `127.0.0.1:8081` by default. Verify liveness with:
 
-HTTP routes and authentication are documented in [`docs/API.md`](docs/API.md).
-The security model and finalized deployment evidence are documented in
-[`docs/BACKEND_SECURITY_BOUNDARY.md`](docs/BACKEND_SECURITY_BOUNDARY.md) and
-[`docs/BRADBURY_DEPLOYMENT_2026-10-02.md`](docs/BRADBURY_DEPLOYMENT_2026-10-02.md).
+```sh
+curl -sS http://127.0.0.1:8081/health
+```
+
+The production server requires `cryptography` and fails closed if the
+dependency is unavailable. Keep provider keys and API tokens outside the
+repository; the default state file is ignored by Git.
+
+## Repository layout
+
+- `backend/` — contract-independent engine, models, persistence, and HTTP API.
+- `contracts/` — GenLayer action firewall and consensus decision gateway.
+- `docs/` — architecture, API, security, verification, and deployment evidence.
+- `tests/` — unit, integration, adversarial, restart, and concurrency tests.
 
 ## GenLayer boundary
 
-The GenLayer contract is an adapter for registering policies, submitting
-intents, recording finalized decisions, and consuming receipts. The service
-source is deployed on Bradbury and the finalized live behavior is recorded in
-`docs/BRADBURY_DEPLOYMENT_2026-10-02.md`. The repository remains backend-only;
-the frontend is the next workstream.
+The contracts are the on-chain enforcement layer for policy registration,
+intent submission, finalized decisions, evidence repair, and single-use
+receipts. The current repair-capable stack and finalized Bradbury behavior are
+recorded in the deployment evidence document.
+
+The live deployment is testnet evidence, not a production-network claim. Any
+future network or contract change must produce a new source-matched deployment
+record and repeat the finality checks before release.
+
+## Development checks
+
+Before committing backend changes, run:
+
+```sh
+.venv/bin/python -m unittest discover -s tests -v
+PYTHONPYCACHEPREFIX=/private/tmp/aegis-pycache .venv/bin/python -m compileall -q backend contracts tests
+git diff --check
+```
+
+Changes to the state machine, receipt binding, evidence validation, or
+contracts should include tests and an updated verification record when live
+behavior changes.
