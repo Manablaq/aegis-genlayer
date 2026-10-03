@@ -1,48 +1,76 @@
-# Bradbury deployment evidence
+# Bradbury deployment and live backend evidence
 
-This file records the live Bradbury testnet deployment performed from commit
-`c616fe0` after the gateway proxy-call fix.
+This document supersedes the earlier provisional deployment record. The
+current source is the committed source at `edb034f` (`expose owner-authorized
+repair gateway path`). The network is Testnet Bradbury (`chainId 4221`,
+`https://rpc-bradbury.genlayer.com`).
 
-Network: `testnet-bradbury` (`chainId 4221`, RPC `https://rpc-bradbury.genlayer.com`)
+The deployment account is
+`0x1f87Ae197af539253978d435aD45cCf28Fb95024`.
 
-Account: `0x1f87Ae197af539253978d435aD45cCf28Fb95024`
+## Current repair-capable stack
 
-## Corrected stack
-
-| Component | Address | Transaction | Observed result |
+| Component | Address | Transaction | Result |
 | --- | --- | --- | --- |
-| Decision gateway | `0x29C3918d74CdB25477f7954bBeb7fC6b4CEDe590` | `0x4e716996b667ee157bdf3df36949a89bd2d9c4033114d48ce557cde1b0b3d92d` | `ACCEPTED`, 5/5 `AGREE`, successful deployment |
-| Action firewall | `0xF2a952f90b638be143aF8558d8c771d005E8b202` | `0x2f89a7631bc7cc93d95448b1f47d9a4975574338d3e55b6e2fc2fde36552f3c7` | `ACCEPTED`, 5/5 `AGREE`, successful deployment |
-| Gateway binding | — | `0xc5f3989f5d670ebdb967ec34f2ce430fbb1a189a3aaff96326ce35e576c0c072` | `ACCEPTED`, 5/5 `AGREE`; `get_firewall` returns the exact firewall address |
-| Policy registration | `0xF2a952f90b638be143aF8558d8c771d005E8b202` | `0x1b4f053c05da513200981c368ad243a72e570a6d29d5d118306ae4b9242b9e1c` | `ACCEPTED`, 5/5 `AGREE` |
-| Fresh intent | `0xF2a952f90b638be143aF8558d8c771d005E8b202` | `0x1b1fbb2afe28431cf59e04c0d65a8252b4fba585b4d8f0d5dc381a5d8fba1bcf` | `ACCEPTED`, 5/5 `AGREE`; read-back is `PENDING` with exact hashes |
-| Consensus decision | `0x29C3918d74CdB25477f7954bBeb7fC6b4CEDe590` | `0x1698a1036bb635e046fd69d4558340cdc859c9c66d6627a14726855197079952` | `ACCEPTED`, successful execution; 5 validators agreed on `AUTHORIZE`; emitted `record_decision` message |
+| Decision gateway | `0x7f55B4935f5cBd6ece4060d5B080c4EcD089791D` | `0xb5e6be301fae7cbf5da4b95ce8443bc094cb63b743ee3f7e6970b7919f5cd6a1` | accepted, successful deployment |
+| Action firewall | `0x263De60E6831F70082B037C450597d374C2e573D` | `0x4a1cc9975345d04c1421413c7ca87d99a973b7d0537ed0ad6c8ef3d7a60db431` | accepted, successful deployment |
+| Gateway binding | — | `0xf52d3f53c2d2b6011fb4299db65e76e74d716a03d32cbe48e701ee2b4f8220cd` | accepted; firewall address matched exactly |
+| Policy `live-repair` | — | `0x50b9a719e1015ebc55777e6677bce3037b72c5e7179253615338956c6fd09deb` | accepted; 24-hour expiry and repair window |
+| Repair test intent | `0x99…99` | `0xb4abf9e6c418c1587e4ad6f8973d0c016380de481e1073dadec99029e0653115` | accepted; read-back was `PENDING` |
 
-The decision receipt reports `validUntil = 1790984217`, which is
-`2026-10-03 00:36:57 WAT`. The decision remains provisional until the appeal
-window closes. The emitted firewall message is deliberately configured for
-finalized delivery, so it must not be replaced with an on-acceptance shortcut.
-After the window, finalize the decision transaction and verify that the intent
-becomes `AUTHORIZED`; only then consume its receipt and verify replay rejection.
+The repair test intent binds action hash `0x11…11`, target hash `0x33…33`,
+payload hash `0x44…44`, value `500`, evidence digest `0x55…55`, and a stable
+action-intent digest. The exact subject and action-intent digest must remain
+unchanged across repair and evidence replacement.
 
-## Corrected execution proof
+## Repair gateway reachability proof
 
-The gateway trace for the decision transaction contains:
+The corrected gateway exposes the owner-authorized `request_repair` method. It
+does not mutate firewall state directly: it validates the pending intent and
+emits the firewall’s existing gateway-only `mark_repair_required` message.
 
-- return data `AUTHORIZE`;
-- no VM error or proxy lookup error;
-- a message to the exact firewall address calling `record_decision`;
-- the commitment bound to the exact action intent.
+| Operation | Transaction | Initial result |
+| --- | --- | --- |
+| Request repair with `SOURCE_NOT_APPROVED` | `0xf718a5a28072fd5fe754e06d1a541c1848a32f59616c7d03f36e58ccc321a016` | accepted, 5/5 agreement; emitted `mark_repair_required` to the exact firewall |
 
-The previous immutable gateway deployment is obsolete. Its trace exposed the
-actual defect (`gl.contract.get_at` was unavailable on Bradbury). The source
-was corrected to `gl.get_contract_at`, linted, committed, and redeployed before
-this evidence was collected.
+The emitted message is finalized delivery. `ACCEPTED` is not treated as
+finality. The post-finalization state must be read back as state `2`
+(`REPAIR_REQUIRED`) before evidence replacement is submitted.
 
-## Finality boundary
+The repair transaction finalized as
+`0xf718a5a28072fd5fe754e06d1a541c1848a32f59616c7d03f36e58ccc321a016` with
+5/5 agreement. The read-back then showed state `2` and reason
+`SOURCE_NOT_APPROVED`.
 
-The live transactions above are not yet protocol-finalized at the time this
-record was written. `ACCEPTED` plus `FINISHED_WITH_RETURN` proves successful
-initial consensus execution, not finality. No release claim should be made
-until the finalization transaction succeeds and the post-message state is read
-back from Bradbury.
+## Finalized rejection and replacement evidence
+
+The independent rejection intent uses ID `0xaa…aa`. Its decision transaction
+was finalized as
+`0xb3abedda2857dcb83cc19eb89e178ccc823285ee2c5cf66c420f23748592f9ee` with
+5/5 consensus agreement and a finalized `record_decision` message carrying
+`DENY`. Its terminal state must be read back as `DENIED` with no receipt.
+
+The replacement transaction was finalized as
+`0xb4cf32b7e41ec1d052d2a7c3fffa6ec6d138077b0bc81334db1d6bc22e699afe` with
+5/5 agreement. Read-back showed evidence digest `0x66…66`, revision `1`,
+state `PENDING`, reason `EVIDENCE_REPLACED`, and unchanged action subject,
+action-intent digest, and repair deadline.
+
+## Release boundary
+
+The backend source and local verification are complete, and the current
+repair-capable contracts are deployed on Bradbury. The live release proof is
+not complete until the repair transaction reaches `READY_TO_FINALIZE`, is
+finalized, and the following stateful checks are recorded from Bradbury:
+
+1. `REPAIR_REQUIRED` with reason `SOURCE_NOT_APPROVED`. **Verified.**
+2. Evidence replacement returning to `PENDING`, with revision incremented and
+   the action subject, action-intent digest, and repair deadline unchanged.
+   **Verified.**
+3. A finalized `AUTHORIZE` transition after replacement. The transaction is
+   submitted and awaiting its finalization window.
+4. A separate finalized `DENY` transition with no receipt. The decision
+   transaction is finalized; terminal state read-back remains to be recorded.
+5. Receipt consumption exactly once and finalized replay rejection.
+
+No frontend work is represented by this document.
