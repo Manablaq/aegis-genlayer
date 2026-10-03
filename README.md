@@ -5,8 +5,8 @@ a policy-approved intent into a single-use execution receipt only when the
 policy, signed evidence, and GenLayer consensus decision all agree.
 
 The project is backend-complete and deployed/tested on GenLayer Bradbury. The
-frontend is intentionally the next workstream; no frontend code is included
-in this repository yet.
+repository also includes a responsive frontend command surface for exploring
+the verified action lifecycle and requesting a local product preview.
 
 ## Project status
 
@@ -16,7 +16,7 @@ in this repository yet.
 | API, persistence, and restart recovery | Complete |
 | Adversarial and concurrency tests | Complete |
 | Bradbury deployment and finalized live proof | Complete |
-| Frontend | Next workstream |
+| Frontend command surface | Complete |
 
 ## Documentation
 
@@ -25,6 +25,7 @@ in this repository yet.
 - [Security boundary](docs/BACKEND_SECURITY_BOUNDARY.md) — fail-closed guarantees and threat assumptions.
 - [Verification report](docs/BACKEND_VERIFICATION_2026-10-02.md) — local and live verification scope.
 - [Bradbury evidence](docs/BRADBURY_DEPLOYMENT_2026-10-02.md) — deployed addresses and finalized transaction evidence.
+- [Frontend guide](frontend/README.md) — local development, interaction map, and browser QA scope.
 
 ## Security invariants
 
@@ -67,11 +68,24 @@ The production server requires `cryptography` and fails closed if the
 dependency is unavailable. Keep provider keys and API tokens outside the
 repository; the default state file is ignored by Git.
 
+Run the frontend in a second terminal:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend is intentionally backend-agnostic in this release. Its proof
+surface reflects the verified contract lifecycle and its access form is a
+local preview flow until a tenant-specific API endpoint is connected.
+
 ## Repository layout
 
 - `backend/` — contract-independent engine, models, persistence, and HTTP API.
 - `contracts/` — GenLayer action firewall and consensus decision gateway.
 - `docs/` — architecture, API, security, verification, and deployment evidence.
+- `frontend/` — Vite/React command surface with responsive interaction states.
 - `tests/` — unit, integration, adversarial, restart, and concurrency tests.
 
 ## GenLayer boundary
