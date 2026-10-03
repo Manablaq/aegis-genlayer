@@ -24,7 +24,7 @@ and adversarial tests are complete.
 ## Run the backend tests
 
 ```sh
-python3 -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 The HTTP service is started with:
@@ -34,6 +34,11 @@ AEGIS_API_TOKEN='replace-me' python3 -m backend.server
 ```
 
 The API binds to `127.0.0.1:8081` by default. It has no frontend dependency.
+
+HTTP routes and authentication are documented in [`docs/API.md`](docs/API.md).
+The security model and finalized deployment evidence are documented in
+[`docs/BACKEND_SECURITY_BOUNDARY.md`](docs/BACKEND_SECURITY_BOUNDARY.md) and
+[`docs/BRADBURY_DEPLOYMENT_2026-10-02.md`](docs/BRADBURY_DEPLOYMENT_2026-10-02.md).
 
 ## GenLayer boundary
 
