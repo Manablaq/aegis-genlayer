@@ -30,6 +30,7 @@ finalized Bradbury firewall record before a receipt is created.
 - [Security boundary](docs/BACKEND_SECURITY_BOUNDARY.md) — fail-closed guarantees and threat assumptions.
 - [Verification report](docs/BACKEND_VERIFICATION_2026-10-02.md) — local and live verification scope.
 - [Bradbury evidence](docs/BRADBURY_DEPLOYMENT_2026-10-02.md) — deployed addresses and finalized transaction evidence.
+- [Submission readiness](docs/SUBMISSION_READINESS.md) — release checklist, verification commands, and deployment gates.
 - [Frontend guide](frontend/README.md) — local development, interaction map, and browser QA scope.
 
 ## Security invariants
