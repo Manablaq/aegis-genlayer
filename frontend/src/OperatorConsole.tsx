@@ -74,7 +74,7 @@ export default function OperatorConsole({ walletAccount, onOpenSandbox }: { wall
   const [backendUrl, setBackendUrl] = useState(defaultUrl)
   const [backendToken, setBackendToken] = useState('')
   const [config, setConfig] = useState<BackendConfig | null>(null)
-  const [connection, setConnection] = useState<'idle' | 'available' | 'testing' | 'connected' | 'error'>('idle')
+  const [connection, setConnection] = useState<'idle' | 'setup' | 'available' | 'testing' | 'connected' | 'error'>('idle')
   const [connectionMessage, setConnectionMessage] = useState('No backend session is active.')
   const [showSettings, setShowSettings] = useState(false)
   const [activeTab, setActiveTab] = useState<ConsoleTab>('create')
@@ -144,6 +144,7 @@ export default function OperatorConsole({ walletAccount, onOpenSandbox }: { wall
     if (connection === 'testing') return 'TESTING CONNECTION'
     if (connection === 'connected') return 'BACKEND CONNECTED'
     if (connection === 'available') return 'BACKEND ONLINE · ACTIONS LOCKED'
+    if (connection === 'setup') return 'SETUP REQUIRED'
     if (connection === 'error') return 'BACKEND ERROR'
     return 'BACKEND NOT CONNECTED'
   }, [connection])
@@ -156,8 +157,8 @@ export default function OperatorConsole({ walletAccount, onOpenSandbox }: { wall
       return
     }
     if (!backendToken.trim()) {
-      setConnection('error')
-      setConnectionMessage('Enter the private bearer token issued by your backend operator.')
+      setConnection('setup')
+      setConnectionMessage('Enter the private bearer token issued by your backend operator to unlock operations.')
       setOperationError('A wallet address is not a backend token. Get the token from the operator who runs your Aegis API.')
       return
     }
