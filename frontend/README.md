@@ -28,10 +28,8 @@ npm run build
 The production build is static and can be served by any static host. The page
 does not fabricate a backend response: the proof surface displays the verified
 Bradbury lifecycle and contract identity already documented in the repository.
-The public proof surface is read-only until an operator connects an authenticated
-tenant endpoint in the control plane. The bearer token is held in React memory
-for the current tab only; it is never bundled into the build or written to
-local storage.
+The public proof surface and sandbox are available immediately; live operations
+use the same-origin backend after wallet sign-in.
 
 ## Landing page and app workspace
 
@@ -41,11 +39,11 @@ public sandbox. `Launch the app` opens the real workspace at `#app`, so users
 have a clear handoff from explanation to operation without losing the static
 landing page.
 
-The app workspace is wallet-first: a browser wallet identifies the operator,
-then the authenticated control plane enables the complete lifecycle. Wallet
-connection never requests a seed phrase or private key and does not silently
-sign a transaction. A wallet account alone is not backend authorization; the
-private bearer token is still required for state-changing API operations.
+The app workspace is wallet-first: a browser wallet signs one short-lived login
+challenge, the backend verifies it, and the authenticated control plane opens
+automatically. Wallet connection never requests a seed phrase or private key
+and does not silently sign a blockchain transaction. The server-only API token
+is never exposed to the browser.
 
 ## Operator control plane
 
@@ -65,25 +63,24 @@ on-chain-authorized.
 
 ### First use
 
-1. Select `Launch the app`, then connect a browser wallet from the app
-   workspace.
-2. Open `Connect backend` in the workspace.
-3. Use `/api` on the hosted app, or `http://127.0.0.1:8081` for the local
-   backend, then enter the private `AEGIS_API_TOKEN` issued for that backend.
-4. Register an immutable policy, or select the policy already registered by the
+1. Select `Launch the app`, then choose `Try a sandbox action` to preview the
+   flow without a wallet or transaction.
+2. Connect a browser wallet and approve the sign-in message. The app connects
+   to its same-origin control plane automatically; no API URL or bearer token
+   is entered by the user.
+3. Register an immutable policy, or select the policy already registered by the
    backend operator.
-5. Create an intent with its evidence. For the GenLayer path, use 20-byte
+4. Create an intent with its evidence. For the GenLayer path, use 20-byte
    `0x` addresses, the policy's on-chain action hash, a target hash, and an
    expiry.
-6. Submit the finalized GenLayer transaction ID in the `GenLayer` tab and
+5. Submit the finalized GenLayer transaction ID in the `GenLayer` tab and
    verify the expected decision.
-7. If the result is `REPAIR_REQUIRED`, replace evidence with the bound agent;
+6. If the result is `REPAIR_REQUIRED`, replace evidence with the bound agent;
    once authorized, consume the receipt exactly once from the `Consume` tab.
 
 The public proof record does not require a token. It is a verified Bradbury
-record and intentionally cannot create tenant events. The bearer token is held
-in memory for the current tab only and is never committed or bundled into the
-frontend.
+record and intentionally cannot create tenant events. The server-side bearer
+token is never committed or bundled into the frontend.
 
 ### Public sandbox
 
@@ -94,17 +91,19 @@ transaction, or external request. The result is explicitly labeled as a
 simulation. Real tenant operations remain behind the authenticated operator
 control plane.
 
-For a browser-to-backend session, configure the API with an exact origin:
+For local browser-to-backend wallet sessions, configure the API with an exact
+origin and a session secret:
 
 ```sh
 AEGIS_API_TOKEN='use-a-secret-token' \
+AEGIS_SESSION_SECRET='another-high-entropy-secret' \
 AEGIS_ALLOWED_ORIGINS='http://127.0.0.1:5173,https://aegis-genlayer.vercel.app' \
 python -m backend.server
 ```
 
 The production build defaults to the same-origin `/api` route. Local Vite
-development defaults to `http://127.0.0.1:8081`. The backend endpoint and token
-are entered interactively in the control plane; neither belongs in `VITE_*`
+development defaults to `http://127.0.0.1:8081`. The API token and session
+secret belong only in server environment variables; neither belongs in `VITE_*`
 build variables or committed files.
 
 ## Interaction map

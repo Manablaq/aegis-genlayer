@@ -84,10 +84,11 @@ npm install
 npm run dev
 ```
 
-The deployed frontend uses the same-origin `/api` route by default. Operators
-must enter the Vercel-managed API bearer token in the control plane; the token
-is held in memory only and is never bundled into the frontend. Provider public
-keys remain a required deployment secret for any evidence-backed authorization;
+The deployed frontend uses the same-origin `/api` route by default. Users sign
+in with a browser wallet by approving a one-time message; the server verifies
+the wallet session and never exposes the Vercel-managed API bearer token to the
+frontend. `AEGIS_SESSION_SECRET` is required for this hosted wallet session and
+must remain server-only. Provider public keys remain a required deployment secret for any evidence-backed authorization;
 an empty provider-key set fails closed into repair rather than fabricating an
 approval.
 

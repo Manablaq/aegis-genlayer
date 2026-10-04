@@ -30,6 +30,7 @@ class handler(AegisHandler):  # noqa: N801
 
     api_token = os.environ.get("AEGIS_API_TOKEN", "")
     allowed_origins = _origins()
+    wallet_session_secret = os.environ.get("AEGIS_SESSION_SECRET", "")
     genlayer_authority = GenLayerAuthority.from_env()
     _store: PostgresStateStore | None = None
 
@@ -73,7 +74,7 @@ class handler(AegisHandler):  # noqa: N801
     def do_OPTIONS(self) -> None:  # noqa: N802
         self._route_path()
         path = self.path.split("?", 1)[0]
-        known_path = path == "/health" or path == "/v1/policies" or path == "/v1/intents" or path.startswith("/v1/intents/") or path == "/v1/receipts/consume"
+        known_path = path in {"/health", "/auth/challenge", "/auth/verify", "/auth/logout", "/v1/policies", "/v1/intents", "/v1/receipts/consume"} or path.startswith("/v1/intents/")
         if not known_path:
             AegisHandler._send(self, HTTPStatus.NOT_FOUND, {"error": "NOT_FOUND"})
             return
@@ -88,4 +89,8 @@ class handler(AegisHandler):  # noqa: N801
         self._dispatch(lambda: AegisHandler.do_GET(self))
 
     def do_POST(self) -> None:  # noqa: N802
+        self._route_path()
+        if self.path.split("?", 1)[0] in {"/auth/challenge", "/auth/verify", "/auth/logout"}:
+            AegisHandler.do_POST(self)
+            return
         self._dispatch(lambda: AegisHandler.do_POST(self))

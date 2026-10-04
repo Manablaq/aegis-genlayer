@@ -3,6 +3,19 @@ export interface BackendConfig {
   token: string
 }
 
+export interface WalletProvider {
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>
+}
+
+export interface WalletChallenge {
+  message: string
+  address: string
+  chain_id: string
+  expires_at: number
+}
+
+export const defaultApiUrl = import.meta.env.VITE_AEGIS_API_URL || (import.meta.env.DEV ? 'http://127.0.0.1:8081' : '/api')
+
 export interface IntentRecord {
   intent_id: string
   policy_id: string
@@ -43,13 +56,12 @@ async function requestJson<T>(config: BackendConfig, path: string, init: Request
   headers.set('Accept', 'application/json')
   if (init.body) headers.set('Content-Type', 'application/json')
   if (authenticated) {
-    if (!config.token.trim()) throw new Error('BACKEND_TOKEN_REQUIRED')
-    headers.set('Authorization', `Bearer ${config.token.trim()}`)
+    if (config.token.trim()) headers.set('Authorization', `Bearer ${config.token.trim()}`)
   }
 
   let response: Response
   try {
-    response = await fetch(endpoint(config, path), { ...init, headers, cache: 'no-store' })
+    response = await fetch(endpoint(config, path), { ...init, headers, cache: 'no-store', credentials: 'include' })
   } catch {
     throw new Error('BACKEND_UNREACHABLE')
   }
@@ -67,6 +79,24 @@ async function requestJson<T>(config: BackendConfig, path: string, init: Request
     throw new BackendApiError(response.status, code)
   }
   return payload as T
+}
+
+export async function authenticateWallet(config: BackendConfig, provider: WalletProvider, address: string, chainId: string | null): Promise<void> {
+  if (!chainId) throw new Error('WALLET_CHAIN_REQUIRED')
+  const challenge = await requestJson<WalletChallenge>(config, '/auth/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ address, chain_id: chainId }),
+  }, false)
+  const signature = await provider.request({ method: 'personal_sign', params: [challenge.message, address] })
+  if (typeof signature !== 'string' || !signature) throw new Error('WALLET_SIGNATURE_REQUIRED')
+  await requestJson<{ authenticated: boolean }>(config, '/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify({ address, message: challenge.message, signature }),
+  }, false)
+}
+
+export function logoutWallet(config: BackendConfig): Promise<{ authenticated: boolean }> {
+  return requestJson<{ authenticated: boolean }>(config, '/auth/logout', { method: 'POST' }, false)
 }
 
 export async function testConnection(config: BackendConfig): Promise<void> {
@@ -120,12 +150,17 @@ export function apiErrorMessage(error: unknown): string {
   if (error instanceof BackendApiError) {
     if (error.status === 401) return 'The backend rejected the bearer token.'
     if (error.status === 404) return 'The requested intent does not exist.'
+    if (error.code === 'WALLET_AUTH_NOT_CONFIGURED') return 'Wallet sign-in is not configured on this deployment yet.'
+    if (error.code === 'WALLET_SIGNATURE_INVALID') return 'The wallet signature could not be verified.'
     return `Backend rejected the operation: ${error.code}`
   }
   if (error instanceof Error) {
     if (error.message === 'BACKEND_UNREACHABLE') return 'The backend could not be reached. Check its URL and CORS policy.'
     if (error.message === 'BACKEND_TOKEN_REQUIRED') return 'Enter the backend bearer token before connecting.'
     if (error.message === 'BACKEND_URL_REQUIRED') return 'Enter the backend URL before connecting.'
+    if (error.message === 'WALLET_AUTH_NOT_CONFIGURED') return 'Wallet sign-in is not configured on this deployment yet.'
+    if (error.message === 'WALLET_SIGNATURE_REQUIRED') return 'Approve the sign-in signature in your wallet to continue.'
+    if (error.message === 'WALLET_CHAIN_REQUIRED') return 'Your wallet did not provide a network.'
     return error.message
   }
   return 'The backend operation failed.'

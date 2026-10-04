@@ -34,7 +34,7 @@ import type { BackendConfig, IntentRecord } from './api'
 
 type ConsoleTab = 'policy' | 'create' | 'genlayer' | 'repair' | 'consume'
 
-const defaultUrl = import.meta.env.VITE_AEGIS_API_URL || (import.meta.env.DEV ? 'http://127.0.0.1:8081' : '/api')
+import { defaultApiUrl } from './api'
 
 function newDigest(): string {
   const bytes = new Uint8Array(32)
@@ -70,8 +70,13 @@ function intentStatusClass(state: string | undefined): string {
   return `intent-state state-${(state || 'UNKNOWN').toLowerCase()}`
 }
 
-export default function OperatorConsole({ walletAccount, onOpenSandbox }: { walletAccount: string | null; onOpenSandbox?: () => void }) {
-  const [backendUrl, setBackendUrl] = useState(defaultUrl)
+function NormalOperatorSurface({ walletAccount, connection, message, onOpenSandbox, onRetry }: { walletAccount: string | null; connection: string; message: string; onOpenSandbox?: () => void; onRetry: () => void }) {
+  const waiting = connection === 'testing'
+  return <div className="operator-shell operator-normal-surface"><div className="normal-surface-status"><span className={`status-orb ${connection}`} /><div><strong>{waiting ? 'SIGNING IN' : walletAccount ? 'WALLET CONNECTED' : 'READY TO START'}</strong><small>{message}</small></div></div><div className="normal-surface-copy"><div className="eyebrow"><span className="eyebrow-line" /> YOUR ACTION WORKSPACE</div><h3>{walletAccount ? 'Your secure workspace is almost ready.' : 'Protect an action in a few clicks.'}</h3><p>{walletAccount ? 'Approve a fresh sign-in message to open the live controls. Aegis never asks for a transaction or private key.' : 'Connect your wallet to sign in. Your wallet identifies you; it never exposes your private key or asks you to paste an API token.'}</p><div className="operator-empty-actions">{walletAccount ? <button className="console-button console-button-primary" onClick={onRetry} disabled={waiting}><KeyRound size={15} /> {waiting ? 'Checking session' : 'Sign in with wallet'}</button> : <button className="console-button console-button-primary" onClick={() => window.dispatchEvent(new CustomEvent('aegis:open-wallet'))}><KeyRound size={15} /> Connect wallet</button>}{onOpenSandbox && <button className="console-button console-button-ghost" onClick={onOpenSandbox}>Try public sandbox</button>}</div></div></div>
+}
+
+export default function OperatorConsole({ walletAccount, onOpenWallet, onOpenSandbox }: { walletAccount: string | null; onOpenWallet?: () => void; onOpenSandbox?: () => void }) {
+  const [backendUrl, setBackendUrl] = useState(defaultApiUrl)
   const [backendToken, setBackendToken] = useState('')
   const [config, setConfig] = useState<BackendConfig | null>(null)
   const [connection, setConnection] = useState<'idle' | 'setup' | 'available' | 'testing' | 'connected' | 'error'>('idle')
@@ -124,21 +129,44 @@ export default function OperatorConsole({ walletAccount, onOpenSandbox }: { wall
     if (!walletAccount) return
     setCaller(walletAccount)
     setCreateForm((current) => current.agent === 'agent-1' ? { ...current, agent: walletAccount } : current)
+    setPolicyForm((current) => current.approved_agents === 'agent-1' ? { ...current, approved_agents: walletAccount } : current)
   }, [walletAccount])
 
   useEffect(() => {
     let active = true
-    void checkHealth({ baseUrl: defaultUrl, token: '' }).then(() => {
+    const nextConfig = { baseUrl: defaultApiUrl, token: '' }
+    if (!walletAccount) {
+      setConfig(null)
+      void checkHealth(nextConfig).then(() => {
+        if (active) {
+          setConnection('available')
+          setConnectionMessage('Backend is online. Connect your wallet to sign in and operate.')
+        }
+      }).catch(() => {
+        if (active) {
+          setConnection('error')
+          setConnectionMessage('The app backend is unavailable right now.')
+        }
+      })
+      return () => { active = false }
+    }
+    setConnection('testing')
+    setConnectionMessage('Checking your wallet session…')
+    void testConnection(nextConfig).then(() => {
       if (active) {
-        setConnection('available')
-        setConnectionMessage('Public health check passed. Add your private token to unlock operations.')
+        setConfig(nextConfig)
+        setConnection('connected')
+        setConnectionMessage('Wallet session active. You can operate your protected actions.')
       }
-    }).catch(() => {
-      // A local backend may not be running yet. The explicit connection flow
-      // remains available and reports the actionable error when used.
+    }).catch((error) => {
+      if (active) {
+        setConfig(null)
+        setConnection('setup')
+        setConnectionMessage(apiErrorMessage(error))
+      }
     })
     return () => { active = false }
-  }, [])
+  }, [walletAccount])
 
   const statusLabel = useMemo(() => {
     if (connection === 'testing') return 'TESTING CONNECTION'
@@ -151,26 +179,21 @@ export default function OperatorConsole({ walletAccount, onOpenSandbox }: { wall
 
   const connectBackend = async () => {
     setOperationError('')
-    if (!/^https?:\/\//i.test(backendUrl.trim()) && backendUrl.trim() !== '/api') {
-      setConnection('error')
-      setConnectionMessage('Backend URL must start with http:// or https://.')
-      return
-    }
-    if (!backendToken.trim()) {
+    if (!walletAccount) {
       setConnection('setup')
-      setConnectionMessage('Enter the private bearer token issued by your backend operator to unlock operations.')
-      setOperationError('A wallet address is not a backend token. Get the token from the operator who runs your Aegis API.')
+      setConnectionMessage('Connect your wallet to sign in and unlock the app.')
+      onOpenWallet?.()
       return
     }
     setConnection('testing')
-    setConnectionMessage('Checking health and authenticated access…')
+    setConnectionMessage('Checking your wallet session…')
     setOperationError('')
     try {
-      const nextConfig = { baseUrl: backendUrl.trim(), token: backendToken }
+      const nextConfig = { baseUrl: defaultApiUrl, token: '' }
       await testConnection(nextConfig)
       setConfig(nextConfig)
       setConnection('connected')
-      setConnectionMessage('Authenticated backend session is active. The bearer token remains in memory only.')
+      setConnectionMessage('Wallet session active. You can operate your protected actions.')
       setShowSettings(false)
     } catch (error) {
       setConfig(null)
@@ -319,6 +342,13 @@ export default function OperatorConsole({ walletAccount, onOpenSandbox }: { wall
   }
 
   const updateCreate = (key: keyof typeof createForm, value: string) => setCreateForm((current) => ({ ...current, [key]: value }))
+
+  const retrySession = () => {
+    onOpenWallet?.()
+    window.dispatchEvent(new CustomEvent('aegis:open-wallet'))
+  }
+
+  if (!config) return <section className="operator-section section-shell" id="operate" aria-labelledby="operate-title"><div className="operator-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> ACTION WORKSPACE</div><h2 id="operate-title">Turn proof<br /><em>into action.</em></h2></div><p>Connect your wallet to open a protected workspace. Aegis keeps backend credentials server-side and uses your signed wallet session for access.</p></div><NormalOperatorSurface walletAccount={walletAccount} connection={connection} message={connectionMessage} onOpenSandbox={onOpenSandbox} onRetry={retrySession} /></section>
 
   return <section className="operator-section section-shell" id="operate" aria-labelledby="operate-title">
     <div className="operator-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> OPERATOR CONTROL PLANE</div><h2 id="operate-title">Turn proof<br /><em>into action.</em></h2></div><p>Connect the authenticated Aegis API to create, evaluate, repair and consume intents. No write is attempted until the operator explicitly submits it.</p></div>

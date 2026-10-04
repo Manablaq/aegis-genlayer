@@ -3,12 +3,32 @@
 The backend exposes a small JSON API on `127.0.0.1:8081` by default. In the
 production Vercel deployment the same API is available under `/api`. Set
 `AEGIS_API_TOKEN` before starting the local server or as a Vercel Secret for
-the deployed function. Every endpoint except `/health` requires:
+the deployed function. Every state-changing endpoint requires either the
+server-managed wallet session described below or the operator bearer token;
+`/health` remains public:
 
 ```http
 Authorization: Bearer <AEGIS_API_TOKEN>
 Content-Type: application/json
 ```
+
+### Wallet session
+
+The hosted app uses a wallet-authenticated session so visitors never paste an
+API token. `POST /auth/challenge` accepts an EIP-1193 wallet address and chain
+ID, returns a short-lived EIP-4361-style message, and sets an HttpOnly,
+SameSite cookie containing a server-signed one-time challenge. The wallet signs
+that exact message with `personal_sign`; `POST /auth/verify` recovers the
+address, consumes the challenge cookie, and sets a one-hour HttpOnly session
+cookie. The backend verifies the session on every protected request. Account
+changes and logout invalidate the browser session.
+
+Wallet-authenticated requests are identity-bound: policy registration must
+approve the connected address, intent creation and evidence repair must use it
+as the agent/caller, GenLayer evaluation must belong to that agent, and receipt
+consumption must use it as the consumer. A wallet address is never accepted as
+a bearer token. Set `AEGIS_SESSION_SECRET` to a high-entropy server-only value
+to enable wallet sessions; if it is absent, the auth route fails closed.
 
 Browser clients must be explicitly allowlisted. Set `AEGIS_ALLOWED_ORIGINS` to
 a comma-separated list of exact origins, for example
