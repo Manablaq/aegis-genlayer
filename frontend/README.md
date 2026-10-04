@@ -73,8 +73,10 @@ on-chain-authorized.
 4. Create an intent with its evidence. For the GenLayer path, use 20-byte
    `0x` addresses, the policy's on-chain action hash, a target hash, and an
    expiry.
-5. Submit the finalized GenLayer transaction ID in the `GenLayer` tab and
-   verify the expected decision.
+5. Copy the finalized GenLayer transaction hash from the GenLayer explorer
+   (not the Aegis intent ID), paste it into the `GenLayer` tab, and verify the
+   expected decision. The transaction hash is `0x` followed by 64 hexadecimal
+   characters.
 6. If the result is `REPAIR_REQUIRED`, replace evidence with the bound agent;
    once authorized, consume the receipt exactly once from the `Consume` tab.
 

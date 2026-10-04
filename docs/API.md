@@ -108,6 +108,10 @@ This is the only decision-application route. The request is:
 }
 ```
 
+`genlayer_tx_id` is the finalized GenLayer transaction hash from the
+GenLayer explorer. It is not the Aegis `intent_id`; the two identifiers are
+independent and must not be interchanged.
+
 The backend independently queries the configured Bradbury RPC with redirects
 disabled. It requires protocol finality (`statusCode` 7), a finalized
 successful execution, the configured decision-gateway recipient, the exact
