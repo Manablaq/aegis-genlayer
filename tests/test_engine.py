@@ -83,7 +83,7 @@ class AegisEngineTests(unittest.TestCase):
         )
         self.assertIsNotNone(receipt.consumed_at)
         self.assertEqual(authorized.state, IntentState.CONSUMED)
-        with self.assertRaises(DecisionError):
+        with self.assertRaisesRegex(DecisionError, "RECEIPT_ALREADY_CONSUMED"):
             self.engine.consume_receipt(
                 receipt_id=receipt.receipt_id,
                 consumer="vendor-1",

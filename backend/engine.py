@@ -321,11 +321,11 @@ class AegisEngine:
             receipt = self.receipts.get(receipt_id)
             if receipt is None:
                 raise DecisionError("RECEIPT_UNKNOWN")
+            if receipt.consumed_at is not None:
+                raise DecisionError("RECEIPT_ALREADY_CONSUMED")
             intent = self._intent(receipt.intent_id)
             if intent.state != IntentState.AUTHORIZED:
                 raise DecisionError("INTENT_NOT_AUTHORIZED")
-            if receipt.consumed_at is not None:
-                raise DecisionError("RECEIPT_ALREADY_CONSUMED")
             if consumer != receipt.consumer:
                 raise DecisionError("CONSUMER_MISMATCH")
             if action_intent_value != receipt.action_intent:
