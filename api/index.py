@@ -91,6 +91,12 @@ class handler(AegisHandler):  # noqa: N801
     def do_POST(self) -> None:  # noqa: N802
         self._route_path()
         if self.path.split("?", 1)[0] in {"/auth/challenge", "/auth/verify", "/auth/logout"}:
+            self._pending_response = None
             AegisHandler.do_POST(self)
+            pending = self._pending_response
+            if pending is None:
+                AegisHandler._send(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "NO_RESPONSE"})
+            else:
+                AegisHandler._send(self, *pending)
             return
         self._dispatch(lambda: AegisHandler.do_POST(self))
