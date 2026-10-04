@@ -79,6 +79,10 @@ export async function testConnection(config: BackendConfig): Promise<void> {
   }
 }
 
+export function checkHealth(config: BackendConfig): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>(config, '/health', {}, false)
+}
+
 export function getIntent(config: BackendConfig, intentId: string): Promise<IntentRecord> {
   return requestJson<IntentRecord>(config, `/v1/intents/${encodeURIComponent(intentId)}`)
 }

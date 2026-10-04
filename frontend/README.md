@@ -48,6 +48,26 @@ agent and recipient, and the target hash used by `submit_intent`. Generic
 off-chain demo intents are deliberately rejected rather than treated as
 on-chain-authorized.
 
+### First use
+
+1. Open `Control plane` and choose `Connect backend`.
+2. Use `/api` on the hosted app, or `http://127.0.0.1:8081` for the local
+   backend, then enter the private `AEGIS_API_TOKEN` issued for that backend.
+3. Register an immutable policy, or select the policy already registered by the
+   backend operator.
+4. Create an intent with its evidence. For the GenLayer path, use 20-byte
+   `0x` addresses, the policy's on-chain action hash, a target hash, and an
+   expiry.
+5. Submit the finalized GenLayer transaction ID in the `GenLayer` tab and
+   verify the expected decision.
+6. If the result is `REPAIR_REQUIRED`, replace evidence with the bound agent;
+   once authorized, consume the receipt exactly once from the `Consume` tab.
+
+The public proof record does not require a token. It is a verified Bradbury
+record and intentionally cannot create tenant events. The bearer token is held
+in memory for the current tab only and is never committed or bundled into the
+frontend.
+
 For a browser-to-backend session, configure the API with an exact origin:
 
 ```sh

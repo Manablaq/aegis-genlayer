@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import {
   apiErrorMessage,
+  checkHealth,
   consumeReceipt,
   createIntent,
   evaluateWithGenLayer,
@@ -73,7 +74,7 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
   const [backendUrl, setBackendUrl] = useState(defaultUrl)
   const [backendToken, setBackendToken] = useState('')
   const [config, setConfig] = useState<BackendConfig | null>(null)
-  const [connection, setConnection] = useState<'idle' | 'testing' | 'connected' | 'error'>('idle')
+  const [connection, setConnection] = useState<'idle' | 'available' | 'testing' | 'connected' | 'error'>('idle')
   const [connectionMessage, setConnectionMessage] = useState('No backend session is active.')
   const [showSettings, setShowSettings] = useState(false)
   const [activeTab, setActiveTab] = useState<ConsoleTab>('create')
@@ -125,9 +126,24 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
     setCreateForm((current) => current.agent === 'agent-1' ? { ...current, agent: walletAccount } : current)
   }, [walletAccount])
 
+  useEffect(() => {
+    let active = true
+    void checkHealth({ baseUrl: defaultUrl, token: '' }).then(() => {
+      if (active) {
+        setConnection('available')
+        setConnectionMessage('API is reachable. Connect with your private token to enable operations.')
+      }
+    }).catch(() => {
+      // A local backend may not be running yet. The explicit connection flow
+      // remains available and reports the actionable error when used.
+    })
+    return () => { active = false }
+  }, [])
+
   const statusLabel = useMemo(() => {
     if (connection === 'testing') return 'TESTING CONNECTION'
     if (connection === 'connected') return 'BACKEND CONNECTED'
+    if (connection === 'available') return 'API AVAILABLE'
     if (connection === 'error') return 'BACKEND ERROR'
     return 'BACKEND NOT CONNECTED'
   }, [connection])
@@ -298,6 +314,7 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
 
   return <section className="operator-section section-shell" id="operate" aria-labelledby="operate-title">
     <div className="operator-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> OPERATOR CONTROL PLANE</div><h2 id="operate-title">Turn proof<br /><em>into action.</em></h2></div><p>Connect the authenticated Aegis API to create, evaluate, repair and consume intents. No write is attempted until the operator explicitly submits it.</p></div>
+    {!config && <div className="operator-quickstart" aria-labelledby="quickstart-title"><div className="quickstart-header"><div className="eyebrow"><span className="eyebrow-line" /> HOW TO USE AEGIS</div><h3 id="quickstart-title">From evidence to a<br /><em>one-time receipt.</em></h3><p>The proof record above is public and read-only. Use the authenticated control plane below when you need to operate a real intent.</p></div><ol className="quickstart-steps"><li><span className="quickstart-number">01</span><div><strong>Connect the backend</strong><p>Choose <code>/api</code> for this deployment and enter the private bearer token issued by your backend operator.</p></div></li><li><span className="quickstart-number">02</span><div><strong>Register or select a policy</strong><p>Use Policy for immutable allowlists, limits, approved sources, and the on-chain action hash.</p></div></li><li><span className="quickstart-number">03</span><div><strong>Create the intent</strong><p>Bind the agent, action, recipient, payload, attestations, and—when using GenLayer—the target hash and expiry.</p></div></li><li><span className="quickstart-number">04</span><div><strong>Verify, repair, then consume</strong><p>Verify a finalized GenLayer transaction, replace evidence only when repair is required, and consume the receipt once.</p></div></li></ol><button className="console-button console-button-primary quickstart-action" onClick={() => setShowSettings(true)}><Settings2 size={15} /> Configure the control plane <ChevronRight size={15} /></button></div>}
     <div className="operator-shell">
       <div className="operator-toolbar"><div className="operator-status"><span className={`status-orb ${connection}`} /><div><strong>{statusLabel}</strong><small>{connectionMessage}</small></div></div><div className="operator-toolbar-actions"><button className="console-button console-button-ghost" onClick={() => setShowSettings(true)}><Settings2 size={15} /> {config ? 'Backend settings' : 'Connect backend'}</button>{config && <button className="console-button console-button-ghost" onClick={() => { setConfig(null); setConnection('idle'); setConnectionMessage('Backend session cleared from memory.') }}><LockKeyhole size={15} /> Clear session</button>}</div></div>
       {showSettings && <div className="backend-settings"><div className="settings-title"><span><CloudCog size={18} /> Backend access</span><button onClick={() => setShowSettings(false)} aria-label="Close backend settings">×</button></div><p>Enter a private API endpoint and bearer token. The token is held in memory for this tab only and is never embedded in the build or stored in local storage.</p><div className="settings-fields"><label>Backend URL<input value={backendUrl} onChange={(event) => setBackendUrl(event.target.value)} placeholder="https://api.example.com" /></label><label>Bearer token<input value={backendToken} onChange={(event) => setBackendToken(event.target.value)} type="password" placeholder="AEGIS_API_TOKEN" /></label></div><div className="settings-actions"><button className="console-button console-button-primary" onClick={() => void connectBackend()} disabled={connection === 'testing'}>{connection === 'testing' ? <LoaderCircle className="spin" size={15} /> : <KeyRound size={15} />} Test and connect</button><span><ShieldCheck size={14} /> Health + authenticated access are checked.</span></div></div>}
