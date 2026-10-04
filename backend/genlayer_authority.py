@@ -288,7 +288,13 @@ class GenLayerProof:
     reason: str
     action_subject: str
     action_intent: str
+    action_hash: str
+    target_hash: str
+    payload_hash: str
+    evidence_digest: str
+    agent: str
     consumer: str
+    value: int
     expires_at: int
     repair_deadline: int
 
@@ -368,7 +374,13 @@ class GenLayerAuthority:
         decision: str,
         expected_action_subject: str,
         expected_action_intent: str,
+        expected_action_hash: str,
+        expected_target_hash: str,
+        expected_payload_hash: str,
+        expected_evidence_digest: str,
+        expected_agent: str,
         expected_consumer: str,
+        expected_value: int,
         expected_expires_at: int,
         expected_repair_deadline: int,
     ) -> GenLayerProof:
@@ -376,7 +388,14 @@ class GenLayerAuthority:
         expected_intent = "0x" + _digest_bytes(intent_id, "INTENT_ID").hex()
         expected_subject = "0x" + _digest_bytes(expected_action_subject, "ACTION_SUBJECT").hex()
         expected_action = "0x" + _digest_bytes(expected_action_intent, "ACTION_INTENT").hex()
+        expected_action_hash_value = "0x" + _digest_bytes(expected_action_hash, "ACTION_HASH").hex()
+        expected_target_hash_value = "0x" + _digest_bytes(expected_target_hash, "TARGET_HASH").hex()
+        expected_payload_hash_value = "0x" + _digest_bytes(expected_payload_hash, "PAYLOAD_HASH").hex()
+        expected_evidence_digest_value = "0x" + _digest_bytes(expected_evidence_digest, "EVIDENCE_DIGEST").hex()
+        expected_agent_address = _require_address(expected_agent, "AGENT").lower()
         expected_consumer_address = _require_address(expected_consumer, "CONSUMER")
+        if isinstance(expected_value, bool) or not isinstance(expected_value, int) or expected_value < 0:
+            raise GenLayerAuthorityError("VALUE_FORMAT")
         if isinstance(expected_expires_at, bool) or not isinstance(expected_expires_at, int):
             raise GenLayerAuthorityError("EXPIRES_AT_FORMAT")
         if isinstance(expected_repair_deadline, bool) or not isinstance(expected_repair_deadline, int):
@@ -415,9 +434,20 @@ class GenLayerAuthority:
         expected_reason = "CONSENSUS_AUTHORIZED" if decision == "AUTHORIZE" else "CONSENSUS_DENIED"
         action_subject = _hex_digest(onchain.get("action_subject"), "ONCHAIN_ACTION_SUBJECT")
         action_intent = _hex_digest(onchain.get("action_intent"), "ONCHAIN_ACTION_INTENT")
+        action_hash = _hex_digest(onchain.get("action_hash"), "ONCHAIN_ACTION_HASH")
+        target_hash = _hex_digest(onchain.get("target_hash"), "ONCHAIN_TARGET_HASH")
+        payload_hash = _hex_digest(onchain.get("payload_hash"), "ONCHAIN_PAYLOAD_HASH")
+        evidence_digest = _hex_digest(onchain.get("evidence_digest"), "ONCHAIN_EVIDENCE_DIGEST")
+        agent = onchain.get("agent")
+        if not isinstance(agent, str) or not _ADDRESS_RE.fullmatch(agent):
+            raise GenLayerAuthorityError("ONCHAIN_AGENT_FORMAT")
+        agent = agent.lower()
         consumer = onchain.get("consumer")
         if not isinstance(consumer, str) or consumer.lower() != expected_consumer_address:
             raise GenLayerAuthorityError("GENLAYER_CONSUMER_MISMATCH")
+        value = onchain.get("value")
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise GenLayerAuthorityError("ONCHAIN_VALUE_FORMAT")
         expires_at = onchain.get("expires_at")
         repair_deadline = onchain.get("repair_deadline")
         if (
@@ -425,6 +455,12 @@ class GenLayerAuthority:
             or onchain.get("reason") != expected_reason
             or action_subject != expected_subject
             or action_intent != expected_action
+            or action_hash != expected_action_hash_value
+            or target_hash != expected_target_hash_value
+            or payload_hash != expected_payload_hash_value
+            or evidence_digest != expected_evidence_digest_value
+            or agent != expected_agent_address
+            or value != expected_value
             or expires_at != expected_expires_at
             or repair_deadline != expected_repair_deadline
         ):
@@ -439,7 +475,13 @@ class GenLayerAuthority:
             reason=expected_reason,
             action_subject=action_subject,
             action_intent=action_intent,
+            action_hash=action_hash,
+            target_hash=target_hash,
+            payload_hash=payload_hash,
+            evidence_digest=evidence_digest,
+            agent=agent,
             consumer=consumer.lower(),
+            value=value,
             expires_at=expires_at,
             repair_deadline=repair_deadline,
         )

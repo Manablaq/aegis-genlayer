@@ -16,6 +16,11 @@ TX_ID = "0x" + "12" * 32
 INTENT_ID = "0x" + "99" * 32
 ACTION_SUBJECT = "11" * 32
 ACTION_INTENT = "22" * 32
+ACTION_HASH = "44" * 32
+TARGET_HASH = "55" * 32
+PAYLOAD_HASH = "66" * 32
+EVIDENCE_DIGEST = "77" * 32
+AGENT = "0x" + "88" * 20
 CONSUMER = "0x" + "33" * 20
 CALL_DATA = "f84cb849160461726773158302" + "99" * 32 + "840141454749535f544553545f414c4c4f57066d6574686f64346564656369646500"
 
@@ -65,7 +70,13 @@ class GenLayerAuthorityTests(unittest.TestCase):
             "reason": "CONSENSUS_AUTHORIZED",
             "action_subject": bytes.fromhex(ACTION_SUBJECT),
             "action_intent": bytes.fromhex(ACTION_INTENT),
+            "action_hash": bytes.fromhex(ACTION_HASH),
+            "target_hash": bytes.fromhex(TARGET_HASH),
+            "payload_hash": bytes.fromhex(PAYLOAD_HASH),
+            "evidence_digest": bytes.fromhex(EVIDENCE_DIGEST),
+            "agent": AGENT,
             "consumer": CONSUMER,
+            "value": 500,
             "expires_at": 100,
             "repair_deadline": 200,
         }
@@ -75,7 +86,13 @@ class GenLayerAuthorityTests(unittest.TestCase):
             decision="AUTHORIZE",
             expected_action_subject=ACTION_SUBJECT,
             expected_action_intent=ACTION_INTENT,
+            expected_action_hash=ACTION_HASH,
+            expected_target_hash=TARGET_HASH,
+            expected_payload_hash=PAYLOAD_HASH,
+            expected_evidence_digest=EVIDENCE_DIGEST,
+            expected_agent=AGENT,
             expected_consumer=CONSUMER,
+            expected_value=500,
             expected_expires_at=100,
             expected_repair_deadline=200,
         )
@@ -103,7 +120,13 @@ class GenLayerAuthorityTests(unittest.TestCase):
             "reason": "CONSENSUS_AUTHORIZED",
             "action_subject": bytes.fromhex(ACTION_SUBJECT),
             "action_intent": bytes.fromhex(ACTION_INTENT),
+            "action_hash": bytes.fromhex(ACTION_HASH),
+            "target_hash": bytes.fromhex(TARGET_HASH),
+            "payload_hash": bytes.fromhex(PAYLOAD_HASH),
+            "evidence_digest": bytes.fromhex(EVIDENCE_DIGEST),
+            "agent": AGENT,
             "consumer": CONSUMER,
+            "value": 500,
             "expires_at": 100,
             "repair_deadline": 200,
         }
@@ -114,7 +137,13 @@ class GenLayerAuthorityTests(unittest.TestCase):
                 decision="AUTHORIZE",
                 expected_action_subject="44" * 32,
                 expected_action_intent=ACTION_INTENT,
+                expected_action_hash=ACTION_HASH,
+                expected_target_hash=TARGET_HASH,
+                expected_payload_hash=PAYLOAD_HASH,
+                expected_evidence_digest=EVIDENCE_DIGEST,
+                expected_agent=AGENT,
                 expected_consumer=CONSUMER,
+                expected_value=500,
                 expected_expires_at=100,
                 expected_repair_deadline=200,
             )
@@ -132,7 +161,13 @@ class GenLayerAuthorityTests(unittest.TestCase):
                 decision="AUTHORIZE",
                 expected_action_subject=ACTION_SUBJECT,
                 expected_action_intent=ACTION_INTENT,
+                expected_action_hash=ACTION_HASH,
+                expected_target_hash=TARGET_HASH,
+                expected_payload_hash=PAYLOAD_HASH,
+                expected_evidence_digest=EVIDENCE_DIGEST,
+                expected_agent=AGENT,
                 expected_consumer=CONSUMER,
+                expected_value=500,
                 expected_expires_at=100,
                 expected_repair_deadline=200,
             )

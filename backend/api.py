@@ -85,13 +85,23 @@ class AegisHandler(BaseHTTPRequestHandler):
                 if intent.onchain_target_hash is None or intent.onchain_evidence_digest is None:
                     self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "GENLAYER_BINDING_REQUIRED"})
                     return
+                policy = self.engine.policies.get(f"{intent.policy_id}:{intent.policy_version}")
+                if policy is None or policy.onchain_action_hash is None:
+                    self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "GENLAYER_BINDING_REQUIRED"})
+                    return
                 proof = authority.verify_decision(
                     transaction_id=body["genlayer_tx_id"],
                     intent_id=intent_id,
                     decision=body["decision"],
                     expected_action_subject=intent.action_subject,
                     expected_action_intent=intent.action_intent,
+                    expected_action_hash=policy.onchain_action_hash,
+                    expected_target_hash=intent.onchain_target_hash,
+                    expected_payload_hash=intent.payload_hash,
+                    expected_evidence_digest=intent.onchain_evidence_digest,
+                    expected_agent=intent.agent,
                     expected_consumer=intent.recipient,
+                    expected_value=intent.value,
                     expected_expires_at=intent.expires_at,
                     expected_repair_deadline=intent.repair_deadline,
                 )
