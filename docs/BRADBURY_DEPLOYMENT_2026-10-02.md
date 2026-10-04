@@ -1,8 +1,8 @@
 # Bradbury deployment and live backend evidence
 
 This document supersedes the earlier provisional deployment record. The
-current source is the committed source at `34d869a` (`use structured consensus
-decisions`). The network is Testnet Bradbury (`chainId 4221`,
+current source is the committed source at `cb02b75` (`make evidence support
+rule explicit`). The network is Testnet Bradbury (`chainId 4221`,
 `https://rpc-bradbury.genlayer.com`).
 
 The deployment account is
@@ -70,6 +70,36 @@ The repair test intent binds action hash `0x11…11`, target hash `0x33…33`,
 payload hash `0x44…44`, value `500`, evidence digest `0x55…55`, and a stable
 action-intent digest. The exact subject and action-intent digest must remain
 unchanged across repair and evidence replacement.
+
+## Current source-matched stack
+
+The latest deployment includes the explicit evidence-support rule in the
+gateway prompt and is the stack configured by the production API defaults.
+The prior hardened stack remains historical evidence and is not the active
+configuration.
+
+| Component | Address | Transaction | Result |
+| --- | --- | --- | --- |
+| Decision gateway | `0x2a274E66687AF4f8FD6B3DAeffCf02C736233000` | `0x7025e2f7e157e4f663de2dc12874ba11e15a6fe0184eb51e4ad3cad8a74344f8` | accepted, successful deployment |
+| Action firewall | `0x2D8CfEFf124eBCb813CA55ad90Ceff93a6d6E523` | `0xd7433f62a78fa61c737796b4be553c8dfd41f89857d8fe4a784aedf6f4fc065a` | accepted, successful deployment |
+| Gateway binding | — | `0xa806d0d09a728bc508b19dd870c439fa87d0f1f9e6cf3e70fc3b94f283a24bf1` | accepted; bound to the exact firewall |
+| Policy `live-repair-v3` | — | `0x7a38f099eb309d60553d100d747f6c4e62100443c0d36338ff2384b393b150bd` | accepted; 24-hour expiry and repair window |
+
+The current-source positive intent is
+`59793097271d3d4d43f36a621817afba243f181fa87f0533f60cbabec49b29fb`.
+Its firewall submission is
+`0x2ac247b85af8e58f171eddc87c4deff3df92070abde629d2793bd776f8383b85`.
+The canonical evidence digest is
+`190273dd0d1c34cd7b720328cd0232e011c3a507eee8fb526b26b2390db7708c`, with
+action-intent `868fbc7826dbb05a44e6330be00c0f21ad2f0868d05a8c8ce4342ab18e7fdd6f`
+and action subject
+`d07caeb1931a973306db60a34b994fb27d49953e3b7b9fc506379852736e2561`.
+The corrected direct-SDK gateway decision transaction is
+`0x431bb3d27a301ba0a2e4a69203fff06f6281682c85612d41cad5d826efc2f5b7`.
+It reached 5/5 agreement, `FINISHED_WITH_RETURN`, and returned `AUTHORIZE`.
+At the time of this record it is `ACCEPTED` and awaiting Bradbury finality;
+the API evaluator and receipt-consumption tests must not run until the
+receipt is `FINALIZED` and the firewall reads back `AUTHORIZED`.
 
 ## Repair gateway reachability proof
 

@@ -20,10 +20,11 @@ _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _MAX_RPC_RESPONSE_BYTES = 4 * 1024 * 1024
 
 # Deployed repair-capable Bradbury contracts. These defaults are source-matched
-# to docs/BRADBURY_DEPLOYMENT_2026-10-02.md and may only be changed explicitly.
+# to the current source and docs/BRADBURY_DEPLOYMENT_2026-10-02.md. They may
+# only be changed explicitly.
 DEFAULT_RPC_URL = "https://rpc-bradbury.genlayer.com"
-DEFAULT_GATEWAY = "0xA7259b54222405a1FC12D9225916dcDB7FdbDfA0"
-DEFAULT_FIREWALL = "0xC3C300Ac277E1E657f63AA2100A31509F2Fd2f24"
+DEFAULT_GATEWAY = "0x2a274E66687AF4f8FD6B3DAeffCf02C736233000"
+DEFAULT_FIREWALL = "0x2D8CfEFf124eBCb813CA55ad90Ceff93a6d6E523"
 DEFAULT_RPC_ORIGIN = "https://explorer-bradbury.genlayer.com"
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
