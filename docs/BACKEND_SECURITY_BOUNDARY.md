@@ -21,6 +21,14 @@ attestation envelope. The production HTTP server requires `cryptography` and
 uses `Ed25519Verifier`; the test suite uses `StaticVerifier` only as an
 explicit test double. A missing production crypto dependency fails startup.
 
+The HTTP API does not expose a caller-supplied consensus decision. The former
+direct evaluation route returns `GENLAYER_FINALITY_REQUIRED`. The canonical
+GenLayer route requires protocol finality, successful execution, the exact
+gateway, a structured `decide` call, a matching decision trace, and a
+finalized firewall read-back. It additionally compares the read-back action
+subject, action-intent digest, consumer, expiry, and repair deadline with the
+persisted local intent before applying the off-chain mirror transition.
+
 Redirect provenance is not used as a security primitive: the signed envelope
 binds the provider, canonical resource, timestamps, and payload digest. The
 current Bradbury deployment and finalized state-transition evidence are

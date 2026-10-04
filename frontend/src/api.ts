@@ -91,10 +91,10 @@ export function registerPolicy(config: BackendConfig, body: Record<string, unkno
   return requestJson<{ status: string }>(config, '/v1/policies', { method: 'POST', body: JSON.stringify(body) })
 }
 
-export function evaluateIntent(config: BackendConfig, intentId: string, consensusDecision: 'AUTHORIZE' | 'DENY'): Promise<IntentRecord> {
-  return requestJson<IntentRecord>(config, `/v1/intents/${encodeURIComponent(intentId)}/evaluate`, {
+export function evaluateWithGenLayer(config: BackendConfig, intentId: string, genlayerTxId: string, decision: 'AUTHORIZE' | 'DENY'): Promise<IntentRecord> {
+  return requestJson<IntentRecord>(config, `/v1/intents/${encodeURIComponent(intentId)}/evaluate-genlayer`, {
     method: 'POST',
-    body: JSON.stringify({ consensus_decision: consensusDecision }),
+    body: JSON.stringify({ genlayer_tx_id: genlayerTxId, decision }),
   })
 }
 

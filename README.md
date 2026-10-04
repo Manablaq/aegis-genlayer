@@ -4,9 +4,11 @@ Aegis is a fail-closed action firewall for autonomous AI agents. It converts
 a policy-approved intent into a single-use execution receipt only when the
 policy, signed evidence, and GenLayer consensus decision all agree.
 
-The project is backend-complete and deployed/tested on GenLayer Bradbury. The
-repository also includes a responsive frontend control plane and a production
-Vercel API backed by transactional Neon Postgres state.
+The project includes a fail-closed backend, a finalized-GenLayer verification
+adapter, a responsive frontend control plane, and a production Vercel API
+backed by transactional Neon Postgres state. The canonical decision path never
+accepts a caller-supplied consensus token: the local intent must match the
+finalized Bradbury firewall record before a receipt is created.
 
 ## Project status
 
@@ -16,6 +18,8 @@ Vercel API backed by transactional Neon Postgres state.
 | API, persistence, and restart recovery | Complete |
 | Adversarial and concurrency tests | Complete |
 | Bradbury deployment and finalized live proof | Complete |
+| Bradbury authority adapter and finality checks | Complete |
+| Current-source positive API-to-Bradbury parity proof | Requires a matching live intent/transaction |
 | Frontend control plane | Complete |
 | Production API deployment and durable state | Complete |
 
@@ -67,7 +71,10 @@ curl -sS http://127.0.0.1:8081/health
 
 The production server requires `cryptography` and fails closed if the
 dependency is unavailable. Keep provider keys and API tokens outside the
-repository; the default state file is ignored by Git.
+repository; the default state file is ignored by Git. GenLayer verification
+also requires the local intent to use the same on-chain action subject,
+action-intent digest, consumer address, expiry, and repair deadline as the
+finalized firewall record.
 
 Run the frontend in a second terminal:
 
@@ -98,7 +105,9 @@ approval.
 The contracts are the on-chain enforcement layer for policy registration,
 intent submission, finalized decisions, evidence repair, and single-use
 receipts. The current repair-capable stack and finalized Bradbury behavior are
-recorded in the deployment evidence document.
+recorded in the deployment evidence document. The API's
+`/evaluate-genlayer` route verifies those finalized records; its former direct
+`/evaluate` route is intentionally retired.
 
 The live deployment is testnet evidence, not a production-network claim. Any
 future network or contract change must produce a new source-matched deployment

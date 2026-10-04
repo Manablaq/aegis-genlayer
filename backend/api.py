@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from .engine import AegisEngine, DecisionError, ValidationError
+from .genlayer_authority import GenLayerAuthority, GenLayerAuthorityError
 from .models import Attestation, Policy
 
 
@@ -15,6 +16,7 @@ class AegisHandler(BaseHTTPRequestHandler):
     engine: AegisEngine
     api_token: str
     allowed_origins: frozenset[str]
+    genlayer_authority: GenLayerAuthority | None = None
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         """Handle browser preflight without weakening endpoint authentication."""
@@ -66,9 +68,32 @@ class AegisHandler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.CREATED, intent.to_dict())
                 return
             if self.path.startswith("/v1/intents/") and self.path.endswith("/evaluate"):
-                intent_id = self.path.removeprefix("/v1/intents/").removesuffix("/evaluate")
-                intent = self.engine.evaluate(intent_id=intent_id, consensus_decision=body["consensus_decision"])
-                self._send(HTTPStatus.OK, intent.to_dict())
+                self._send(HTTPStatus.GONE, {"error": "GENLAYER_FINALITY_REQUIRED"})
+                return
+            if self.path.startswith("/v1/intents/") and self.path.endswith("/evaluate-genlayer"):
+                intent_id = self.path.removeprefix("/v1/intents/").removesuffix("/evaluate-genlayer")
+                authority = getattr(self, "genlayer_authority", None)
+                if authority is None:
+                    self._send(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "GENLAYER_NOT_CONFIGURED"})
+                    return
+                intent = self.engine.intents.get(intent_id)
+                if intent is None:
+                    self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "INTENT_UNKNOWN"})
+                    return
+                proof = authority.verify_decision(
+                    transaction_id=body["genlayer_tx_id"],
+                    intent_id=intent_id,
+                    decision=body["decision"],
+                    expected_action_subject=intent.action_subject,
+                    expected_action_intent=intent.action_intent,
+                    expected_consumer=intent.recipient,
+                    expected_expires_at=intent.expires_at,
+                    expected_repair_deadline=intent.repair_deadline,
+                )
+                updated = self.engine.evaluate_genlayer(intent_id=intent_id, consensus_decision=proof.decision)
+                response = updated.to_dict()
+                response["genlayer_proof"] = proof.__dict__
+                self._send(HTTPStatus.OK, response)
                 return
             if self.path.startswith("/v1/intents/") and self.path.endswith("/replace-evidence"):
                 intent_id = self.path.removeprefix("/v1/intents/").removesuffix("/replace-evidence")
@@ -86,6 +111,8 @@ class AegisHandler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.OK, receipt.to_dict())
                 return
             self._send(HTTPStatus.NOT_FOUND, {"error": "NOT_FOUND"})
+        except GenLayerAuthorityError as exc:
+            self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
         except (KeyError, TypeError, ValueError, ValidationError, DecisionError) as exc:
             self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
 

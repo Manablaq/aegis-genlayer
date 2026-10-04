@@ -94,6 +94,15 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertEqual(body["status"], "REGISTERED")
 
+    def test_direct_consensus_evaluation_is_disabled(self):
+        status, body = self.request(
+            "POST",
+            "/v1/intents/" + "a" * 64 + "/evaluate",
+            {"consensus_decision": "AUTHORIZE"},
+        )
+        self.assertEqual(status, 410)
+        self.assertEqual(body["error"], "GENLAYER_FINALITY_REQUIRED")
+
 
 if __name__ == "__main__":
     unittest.main()

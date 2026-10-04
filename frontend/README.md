@@ -36,10 +36,11 @@ local storage.
 
 The `Control plane` section connects to the backend HTTP API and exposes the
 same guarded operations as the API: register an immutable policy version,
-create an intent, evaluate it, replace evidence during `REPAIR_REQUIRED`,
-refresh persisted state, and consume a receipt once. The UI does not fabricate
-provider attestations or claim that a request succeeded when the backend
-rejects it.
+create an intent, verify a finalized GenLayer decision transaction, replace
+evidence during `REPAIR_REQUIRED`, refresh persisted state, and consume a
+receipt once. Direct caller-supplied evaluation is not exposed. The UI does
+not fabricate provider attestations or claim that a request succeeded when the
+backend rejects it.
 
 For a browser-to-backend session, configure the API with an exact origin:
 

@@ -55,10 +55,30 @@ Returns the persisted intent, including its immutable action subject,
 action-intent digest, state, evidence revision, repair deadline, and receipt
 binding when present.
 
-### `POST /v1/intents/{intent_id}/evaluate`
+### `POST /v1/intents/{intent_id}/evaluate-genlayer`
 
-Records a consensus decision. `consensus_decision` must be `AUTHORIZE` or
-`DENY`; invalid or conflicting decisions fail closed.
+This is the only decision-application route. The request is:
+
+```json
+{
+  "genlayer_tx_id": "0x<64 hex characters>",
+  "decision": "AUTHORIZE"
+}
+```
+
+The backend independently queries the configured Bradbury RPC with redirects
+disabled. It requires protocol finality (`statusCode` 7), a finalized
+successful execution, the configured decision-gateway recipient, the exact
+intent ID and gateway method markers in the transaction calldata, a successful
+trace returning the requested decision, and a finalized firewall read-back.
+The read-back must also match the local intent's action subject, action-intent
+digest, consumer address, expiry, and repair deadline. Only after all checks
+pass does the backend apply the state transition and create a receipt for an
+authorization.
+
+`decision` is an expected value, not an authority input: a mismatch with the
+finalized trace or firewall state is rejected. A direct caller-supplied
+`/evaluate` decision is retired and returns `410 GENLAYER_FINALITY_REQUIRED`.
 
 ### `POST /v1/intents/{intent_id}/replace-evidence`
 

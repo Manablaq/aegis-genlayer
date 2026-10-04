@@ -212,6 +212,38 @@ class AegisEngine:
             self._persist()
             return intent
 
+    def evaluate_genlayer(self, *, intent_id: str, consensus_decision: str) -> Intent:
+        """Apply a decision already proven by the bound GenLayer firewall.
+
+        This path deliberately does not accept a caller-supplied decision as
+        authority. The HTTP adapter must verify a finalized Bradbury receipt,
+        exact gateway calldata, and matching on-chain intent state first.
+        """
+        with self._lock:
+            intent = self._intent(intent_id)
+            if intent.state != IntentState.PENDING:
+                raise DecisionError("INTENT_NOT_PENDING")
+            if consensus_decision not in {"AUTHORIZE", "DENY"}:
+                raise DecisionError("DECISION_TOKEN")
+            if consensus_decision == "DENY":
+                intent.state = IntentState.DENIED
+                intent.reason = "GENLAYER_FINALIZED_DENIED"
+                self._persist()
+                return intent
+            intent.state = IntentState.AUTHORIZED
+            intent.reason = "GENLAYER_FINALIZED_AUTHORIZED"
+            receipt_id = digest_hex({"domain": "AEGIS/RECEIPT/V1", "intent": intent.intent_id, "action_intent": intent.action_intent})
+            intent.receipt_id = receipt_id
+            self.receipts[receipt_id] = Receipt(
+                receipt_id=receipt_id,
+                intent_id=intent.intent_id,
+                action_intent=intent.action_intent,
+                consumer=intent.recipient,
+                expires_at=intent.expires_at,
+            )
+            self._persist()
+            return intent
+
     def replace_evidence(self, *, intent_id: str, caller: str, attestations: list[Attestation]) -> Intent:
         with self._lock:
             intent = self._intent(intent_id)

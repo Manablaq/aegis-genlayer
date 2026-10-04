@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from backend.api import AegisHandler
 from backend.engine import AegisEngine, Ed25519Verifier
+from backend.genlayer_authority import GenLayerAuthority
 from backend.postgres_store import PostgresStateStore
 
 
@@ -29,6 +30,7 @@ class handler(AegisHandler):  # noqa: N801
 
     api_token = os.environ.get("AEGIS_API_TOKEN", "")
     allowed_origins = _origins()
+    genlayer_authority = GenLayerAuthority.from_env()
     _store: PostgresStateStore | None = None
 
     @classmethod

@@ -11,11 +11,12 @@ The backend includes:
 - immutable policy versions, bounded evidence, canonical action subjects,
   repair/deadline invariants, exact receipt binding, and replay protection;
 - a GenLayer adapter with immutable policies, gateway-bound commitments,
-  explicit terminal transitions, and single-use receipts.
+  explicit terminal transitions, single-use receipts, no-redirect RPC
+  handling, and local/on-chain action-binding parity checks.
 
 ## Local verification
 
-- All 16 backend unit/integration tests pass, including Ed25519 tamper
+- All 23 backend unit/integration tests pass, including Ed25519 tamper
   rejection, restart recovery, concurrent consumption, redirect ambiguity,
   repair invariants, and API authentication.
 - Python compilation and `git diff --check` pass.
@@ -37,4 +38,9 @@ The current repair-capable deployment is recorded in
   `RECEIPT_CONSUMED_OR_UNKNOWN`, while the intent remains `CONSUMED`.
 
 Local restart tests prove persisted recovery without automatic resend or
-replacement. The backend is complete; no frontend work has started.
+replacement. The direct caller-supplied evaluation route is retired. The
+frontend now sends only finalized GenLayer transaction IDs to the canonical
+verification route. A current-source positive end-to-end API proof still
+requires a live on-chain intent whose full binding matches the persisted local
+intent; the adapter rejects the request rather than weakening this boundary
+when the binding is absent or mismatched.
