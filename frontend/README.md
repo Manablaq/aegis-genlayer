@@ -45,15 +45,15 @@ automatically. Wallet connection never requests a seed phrase or private key
 and does not silently sign a blockchain transaction. The server-only API token
 is never exposed to the browser.
 
-## Operator control plane
+## Authenticated action workspace
 
-The `Control plane` section connects to the backend HTTP API and exposes the
-same guarded operations as the API: register an immutable policy version,
-create an intent, verify a finalized GenLayer decision transaction, replace
-evidence during `REPAIR_REQUIRED`, refresh persisted state, and consume a
-receipt once. Direct caller-supplied evaluation is not exposed. The UI does
-not fabricate provider attestations or claim that a request succeeded when the
-backend rejects it.
+After wallet sign-in, the action workspace connects to the same-origin backend
+session and exposes the same guarded operations as the API: register an
+immutable policy version, create an intent, verify a finalized GenLayer
+decision transaction, replace evidence during `REPAIR_REQUIRED`, refresh
+persisted state, and consume a receipt once. Direct caller-supplied evaluation
+is not exposed. The UI does not fabricate provider attestations or claim that
+a request succeeded when the backend rejects it.
 
 The GenLayer route is available only for intents created with the exact
 contract-compatible binding: the policy's on-chain action hash, address-shaped
@@ -110,8 +110,8 @@ build variables or committed files.
 
 - The landing page explains the product and hands off to `#app` through the
   header, hero, feature card, and final call-to-action.
-- The app workspace provides wallet connection, wallet state, backend setup,
-  and the complete operator console in one place.
+- The app workspace provides wallet connection, wallet state, sign-in status,
+  and the complete authenticated operator console in one place.
 - Landing-page controls smoothly scroll to the system, proof, and FAQ sections.
 - The three protocol tabs update the detail panel without a page reload.
 - The proof card copies the verified contract ID, with an async Clipboard API

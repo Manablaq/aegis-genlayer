@@ -88,7 +88,8 @@ The deployed frontend uses the same-origin `/api` route by default. Users sign
 in with a browser wallet by approving a one-time message; the server verifies
 the wallet session and never exposes the Vercel-managed API bearer token to the
 frontend. `AEGIS_SESSION_SECRET` is required for this hosted wallet session and
-must remain server-only. Provider public keys remain a required deployment secret for any evidence-backed authorization;
+must remain server-only. Provider public keys remain a required deployment
+secret for any evidence-backed authorization;
 an empty provider-key set fails closed into repair rather than fabricating an
 approval.
 

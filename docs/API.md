@@ -33,8 +33,9 @@ to enable wallet sessions; if it is absent, the auth route fails closed.
 Browser clients must be explicitly allowlisted. Set `AEGIS_ALLOWED_ORIGINS` to
 a comma-separated list of exact origins, for example
 `http://127.0.0.1:5173,https://aegis-genlayer.vercel.app`. The server never uses
-`Access-Control-Allow-Origin: *`, and the bearer token is not accepted through
-cookies or query parameters. Local development defaults to the two Vite
+`Access-Control-Allow-Origin: *`. Bearer credentials are never accepted through
+cookies or query parameters; the separate wallet session uses only the signed
+HttpOnly cookie described above. Local development defaults to the two Vite
 origins when `AEGIS_ALLOWED_ORIGINS` is unset.
 
 The deployed function uses `DATABASE_URL` from the connected Neon resource.
