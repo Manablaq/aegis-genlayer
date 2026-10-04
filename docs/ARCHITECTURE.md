@@ -10,7 +10,7 @@ an authorized action.
 Provider attestations
         │  Ed25519 signatures over canonical envelopes
         ▼
-backend/engine.py ── JsonStore ── atomic, restart-safe state
+backend/engine.py ── JsonStore locally / Postgres row lock on Vercel
         │
         │  authenticated JSON API
         ▼
@@ -33,8 +33,11 @@ Single-use execution receipt ── exact consumer and action-intent binding
 `backend/engine.py` is the reference state machine used by the API and tests.
 It validates policy versions, action subjects, canonical evidence, freshness,
 allowlisted sources and recipients, consensus tokens, receipt binding, and
-terminal transitions. `backend/store.py` persists state atomically and fsyncs
-both the file and its parent directory.
+terminal transitions. `backend/store.py` persists local state atomically and
+fsyncs both the file and its parent directory. The Vercel adapter in
+`backend/postgres_store.py` uses a single JSONB snapshot row with
+`SELECT ... FOR UPDATE`; every successful mutation commits the updated
+snapshot before its response is sent.
 
 ### HTTP API
 
@@ -104,4 +107,6 @@ The current repair-capable contracts are deployed and behaviorally verified on
 Testnet Bradbury. Addresses, transaction identifiers, and the finalized live
 checks are maintained in
 [BRADBURY_DEPLOYMENT_2026-10-02.md](BRADBURY_DEPLOYMENT_2026-10-02.md).
-The frontend is outside the current repository scope.
+The frontend and API are deployed together on Vercel. The frontend reaches the
+API through same-origin `/api/*` rewrites; bearer authentication remains
+explicit and provider-key configuration remains fail-closed.

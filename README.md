@@ -5,8 +5,8 @@ a policy-approved intent into a single-use execution receipt only when the
 policy, signed evidence, and GenLayer consensus decision all agree.
 
 The project is backend-complete and deployed/tested on GenLayer Bradbury. The
-repository also includes a responsive frontend command surface for exploring
-the verified action lifecycle and requesting a local product preview.
+repository also includes a responsive frontend control plane and a production
+Vercel API backed by transactional Neon Postgres state.
 
 ## Project status
 
@@ -16,7 +16,8 @@ the verified action lifecycle and requesting a local product preview.
 | API, persistence, and restart recovery | Complete |
 | Adversarial and concurrency tests | Complete |
 | Bradbury deployment and finalized live proof | Complete |
-| Frontend command surface | Complete |
+| Frontend control plane | Complete |
+| Production API deployment and durable state | Complete |
 
 ## Documentation
 
@@ -76,12 +77,16 @@ npm install
 npm run dev
 ```
 
-The frontend is intentionally backend-agnostic in this release. Its proof
-surface reflects the verified contract lifecycle and its access form is a
-local preview flow until a tenant-specific API endpoint is connected.
+The deployed frontend uses the same-origin `/api` route by default. Operators
+must enter the Vercel-managed API bearer token in the control plane; the token
+is held in memory only and is never bundled into the frontend. Provider public
+keys remain a required deployment secret for any evidence-backed authorization;
+an empty provider-key set fails closed into repair rather than fabricating an
+approval.
 
 ## Repository layout
 
+- `api/` — Vercel Python entrypoint for the production API.
 - `backend/` — contract-independent engine, models, persistence, and HTTP API.
 - `contracts/` — GenLayer action firewall and consensus decision gateway.
 - `docs/` — architecture, API, security, verification, and deployment evidence.
@@ -98,6 +103,12 @@ recorded in the deployment evidence document.
 The live deployment is testnet evidence, not a production-network claim. Any
 future network or contract change must produce a new source-matched deployment
 record and repeat the finality checks before release.
+
+The Vercel deployment uses `vercel.json` to build `frontend/`, route `/api/*`
+to the Python function, and keep state in the connected Neon Postgres resource.
+The function takes a row lock around every engine snapshot, commits before a
+successful response is emitted, and therefore does not rely on ephemeral
+serverless filesystem state.
 
 ## Development checks
 

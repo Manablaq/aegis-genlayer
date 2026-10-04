@@ -49,8 +49,10 @@ AEGIS_ALLOWED_ORIGINS='http://127.0.0.1:5173,https://aegis-genlayer.vercel.app' 
 python -m backend.server
 ```
 
-The backend endpoint and token are entered interactively in the control plane;
-neither belongs in `VITE_*` build variables or committed files.
+The production build defaults to the same-origin `/api` route. Local Vite
+development defaults to `http://127.0.0.1:8081`. The backend endpoint and token
+are entered interactively in the control plane; neither belongs in `VITE_*`
+build variables or committed files.
 
 ## Interaction map
 

@@ -1,8 +1,9 @@
 # Aegis HTTP API
 
-The backend exposes a small JSON API on `127.0.0.1:8081` by default. Set
-`AEGIS_API_TOKEN` before starting the server. Every endpoint except `/health`
-requires:
+The backend exposes a small JSON API on `127.0.0.1:8081` by default. In the
+production Vercel deployment the same API is available under `/api`. Set
+`AEGIS_API_TOKEN` before starting the local server or as a Vercel Secret for
+the deployed function. Every endpoint except `/health` requires:
 
 ```http
 Authorization: Bearer <AEGIS_API_TOKEN>
@@ -15,6 +16,12 @@ a comma-separated list of exact origins, for example
 `Access-Control-Allow-Origin: *`, and the bearer token is not accepted through
 cookies or query parameters. Local development defaults to the two Vite
 origins when `AEGIS_ALLOWED_ORIGINS` is unset.
+
+The deployed function uses `DATABASE_URL` from the connected Neon resource.
+Each invocation loads the strict engine snapshot inside a Postgres transaction,
+locks the state row, and commits the updated snapshot before returning a
+successful mutation response. Ephemeral function files are never used for
+security-critical state.
 
 ## Endpoints
 

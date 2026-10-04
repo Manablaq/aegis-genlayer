@@ -33,7 +33,7 @@ import type { BackendConfig, IntentRecord } from './api'
 
 type ConsoleTab = 'policy' | 'create' | 'evaluate' | 'repair' | 'consume'
 
-const defaultUrl = import.meta.env.VITE_AEGIS_API_URL || 'http://127.0.0.1:8081'
+const defaultUrl = import.meta.env.VITE_AEGIS_API_URL || (import.meta.env.DEV ? 'http://127.0.0.1:8081' : '/api')
 
 function newDigest(): string {
   const bytes = new Uint8Array(32)
