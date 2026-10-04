@@ -1,7 +1,8 @@
 # Aegis frontend
 
-The frontend is a responsive command surface for Aegis: a consensus-enforced
-action firewall for autonomous agents. It uses the supplied gym-promotion
+The frontend is a responsive public landing page and authenticated action
+workspace for Aegis: a consensus-enforced action firewall for autonomous
+agents. It uses the supplied gym-promotion
 landing-page reference as visual direction—dark editorial composition, hard
 yellow accents, diagonal geometry, compact navigation, and a high-contrast
 conversion path—while using an original Aegis-specific layout and copy.
@@ -32,6 +33,20 @@ tenant endpoint in the control plane. The bearer token is held in React memory
 for the current tab only; it is never bundled into the build or written to
 local storage.
 
+## Landing page and app workspace
+
+The root URL is the public landing page. It explains the evidence, consensus,
+and receipt model, shows the verified Bradbury proof record, and provides the
+public sandbox. `Launch the app` opens the real workspace at `#app`, so users
+have a clear handoff from explanation to operation without losing the static
+landing page.
+
+The app workspace is wallet-first: a browser wallet identifies the operator,
+then the authenticated control plane enables the complete lifecycle. Wallet
+connection never requests a seed phrase or private key and does not silently
+sign a transaction. A wallet account alone is not backend authorization; the
+private bearer token is still required for state-changing API operations.
+
 ## Operator control plane
 
 The `Control plane` section connects to the backend HTTP API and exposes the
@@ -50,17 +65,19 @@ on-chain-authorized.
 
 ### First use
 
-1. Open `Control plane` and choose `Connect backend`.
-2. Use `/api` on the hosted app, or `http://127.0.0.1:8081` for the local
+1. Select `Launch the app`, then connect a browser wallet from the app
+   workspace.
+2. Open `Connect backend` in the workspace.
+3. Use `/api` on the hosted app, or `http://127.0.0.1:8081` for the local
    backend, then enter the private `AEGIS_API_TOKEN` issued for that backend.
-3. Register an immutable policy, or select the policy already registered by the
+4. Register an immutable policy, or select the policy already registered by the
    backend operator.
-4. Create an intent with its evidence. For the GenLayer path, use 20-byte
+5. Create an intent with its evidence. For the GenLayer path, use 20-byte
    `0x` addresses, the policy's on-chain action hash, a target hash, and an
    expiry.
-5. Submit the finalized GenLayer transaction ID in the `GenLayer` tab and
+6. Submit the finalized GenLayer transaction ID in the `GenLayer` tab and
    verify the expected decision.
-6. If the result is `REPAIR_REQUIRED`, replace evidence with the bound agent;
+7. If the result is `REPAIR_REQUIRED`, replace evidence with the bound agent;
    once authorized, consume the receipt exactly once from the `Consume` tab.
 
 The public proof record does not require a token. It is a verified Bradbury
@@ -70,8 +87,8 @@ frontend.
 
 ### Public sandbox
 
-Visitors can select `Try the sandbox` from the header, hero, proof record, or
-final call-to-action. They can describe an example action and watch the
+Visitors can select `Try the sandbox` from the landing page or app workspace.
+They can describe an example action and watch the
 evidence, consensus, and one-time receipt stages without a wallet, token,
 transaction, or external request. The result is explicitly labeled as a
 simulation. Real tenant operations remain behind the authenticated operator
@@ -92,7 +109,11 @@ build variables or committed files.
 
 ## Interaction map
 
-- Header and hero controls smoothly scroll to the system, proof, and FAQ sections.
+- The landing page explains the product and hands off to `#app` through the
+  header, hero, feature card, and final call-to-action.
+- The app workspace provides wallet connection, wallet state, backend setup,
+  and the complete operator console in one place.
+- Landing-page controls smoothly scroll to the system, proof, and FAQ sections.
 - The three protocol tabs update the detail panel without a page reload.
 - The proof card copies the verified contract ID, with an async Clipboard API
   path and a legacy `execCommand` fallback for restricted browser contexts.
@@ -103,9 +124,10 @@ build variables or committed files.
 - FAQ rows are keyboard-accessible accordions.
 - The responsive menu opens and closes on small screens and closes after a
   navigation choice.
-- “Get protected” and “Start with Aegis” open the local preview dialog. The
-  form validates name and email and shows an explicit local-only success state;
-  it does not claim to send an email or silently call a missing backend.
+- The sandbox opens from the public landing page and app workspace. The
+  preview dialog, when used, is local-only: it validates name and email and
+  shows an explicit success state; it does not claim to send an email or
+  silently call a missing backend.
 - Proof rows are selectable controls that expose the selected lifecycle detail.
   The proof board is explicitly labeled as a verified Bradbury record rather
   than a fabricated live event stream.
