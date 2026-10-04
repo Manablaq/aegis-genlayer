@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from backend.engine import AegisEngine, DecisionError, StaticVerifier, ValidationError
-from backend.models import Attestation, IntentState, Policy, digest_hex
+from backend.models import Attestation, IntentState, Policy, chain_action_intent, chain_action_subject, digest_hex
 from backend.store import JsonStore
 
 
@@ -211,6 +211,64 @@ class AegisEngineTests(unittest.TestCase):
         with self.assertRaises(DecisionError):
             self.engine.evaluate(intent_id=intent.intent_id, consensus_decision="MAYBE")
         self.assertEqual(intent.state, IntentState.PENDING)
+
+    def test_genlayer_evaluation_requires_contract_compatible_binding(self):
+        intent = self.create()
+        with self.assertRaisesRegex(DecisionError, "GENLAYER_BINDING_REQUIRED"):
+            self.engine.evaluate_genlayer(intent_id=intent.intent_id, consensus_decision="AUTHORIZE")
+
+    def test_chain_bound_intent_mirrors_firewall_hashes(self):
+        agent = "0x" + "11" * 20
+        consumer = "0x" + "22" * 20
+        action_hash = "ab" * 32
+        target_hash = "cd" * 32
+        chain_policy = Policy(
+            policy_id="chain-policy",
+            version=1,
+            approved_agents=frozenset({agent}),
+            allowed_action_types=frozenset({"release_payment"}),
+            allowed_recipients=frozenset({consumer}),
+            approved_sources={"primary": "https://primary.example/api/", "secondary": "https://secondary.example/api/"},
+            max_value=10_000,
+            required_sources=frozenset({"primary", "secondary"}),
+            minimum_attestations=2,
+            maximum_age_seconds=100,
+            intent_ttl_seconds=60,
+            repair_window_seconds=120,
+            onchain_action_hash=action_hash,
+        )
+        engine = AegisEngine(verifier=self.verifier, clock=self.clock)
+        engine.register_policy(chain_policy)
+        intent = engine.create_intent(
+            intent_id="c" * 64,
+            policy_id="chain-policy",
+            policy_version=1,
+            agent=agent,
+            action_type="release_payment",
+            target="invoice-42",
+            recipient=consumer,
+            value=500,
+            payload_hash="ef" * 32,
+            attestations=[attestation("primary", "sig-primary"), attestation("secondary", "sig-secondary")],
+            onchain_target_hash=target_hash,
+        )
+        self.assertEqual(
+            intent.action_subject,
+            chain_action_subject(
+                action_hash=action_hash,
+                target_hash=target_hash,
+                payload_hash="ef" * 32,
+                agent=agent,
+                consumer=consumer,
+                value=500,
+            ),
+        )
+        self.assertEqual(
+            intent.action_intent,
+            chain_action_intent(intent_id=intent.intent_id, subject=intent.action_subject, policy_id="chain-policy"),
+        )
+        self.assertEqual(intent.onchain_target_hash, target_hash)
+        self.assertEqual(intent.onchain_evidence_digest, digest_hex([item.to_dict() for item in intent.attestations]))
 
     def test_policy_rejects_redirect_ambiguous_source(self):
         with self.assertRaises(ValueError):

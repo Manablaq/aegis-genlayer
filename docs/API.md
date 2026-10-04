@@ -39,7 +39,9 @@ Registers an immutable policy version. The request contains the policy model:
 `policy_id`, `version`, `approved_agents`, `allowed_action_types`,
 `allowed_recipients`, `approved_sources`, `max_value`, `required_sources`,
 `minimum_attestations`, `maximum_age_seconds`, `intent_ttl_seconds`, and
-`repair_window_seconds`.
+`repair_window_seconds`. A policy intended for the GenLayer path must also set
+`onchain_action_hash` to the exact 32-byte action hash registered in the
+firewall policy.
 
 ### `POST /v1/intents`
 
@@ -48,6 +50,25 @@ limits. Evidence signatures, freshness, source allowlists, and recipient
 allowlists are evaluated by the subsequent consensus decision. The request
 includes the intent identity, policy version, action data, payload hash, and an
 `attestations` array.
+
+To make the intent eligible for finalized GenLayer verification, include:
+
+```json
+{
+  "genlayer_binding": {
+    "target_hash": "<64 hex characters>",
+    "expires_at": 1791098000
+  }
+}
+```
+
+The agent and recipient must then be the exact on-chain addresses, the policy
+must carry the registered action hash, and the backend derives the firewall's
+action subject, action-intent digest, and evidence digest byte-for-byte. An
+intent created without this binding cannot be evaluated through the GenLayer
+route. `expires_at` is optional for new intents (the policy TTL is used when it
+is omitted), but when supplied it must be a future timestamp within the policy
+window and must equal the value passed to `submit_intent`.
 
 ### `GET /v1/intents/{intent_id}`
 

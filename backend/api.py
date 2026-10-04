@@ -64,6 +64,8 @@ class AegisHandler(BaseHTTPRequestHandler):
                     agent=body["agent"], action_type=body["action_type"], target=body["target"],
                     recipient=body["recipient"], value=int(body["value"]), payload_hash=body["payload_hash"],
                     attestations=[Attestation(**item) for item in body["attestations"]],
+                    onchain_target_hash=_genlayer_target_hash(body),
+                    expires_at=_genlayer_expires_at(body),
                 )
                 self._send(HTTPStatus.CREATED, intent.to_dict())
                 return
@@ -79,6 +81,9 @@ class AegisHandler(BaseHTTPRequestHandler):
                 intent = self.engine.intents.get(intent_id)
                 if intent is None:
                     self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "INTENT_UNKNOWN"})
+                    return
+                if intent.onchain_target_hash is None or intent.onchain_evidence_digest is None:
+                    self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "GENLAYER_BINDING_REQUIRED"})
                     return
                 proof = authority.verify_decision(
                     transaction_id=body["genlayer_tx_id"],
@@ -164,7 +169,31 @@ def _policy(body: dict[str, Any]) -> Policy:
         maximum_age_seconds=int(body["maximum_age_seconds"]),
         intent_ttl_seconds=int(body["intent_ttl_seconds"]),
         repair_window_seconds=int(body["repair_window_seconds"]), active=bool(body.get("active", True)),
+        onchain_action_hash=body.get("onchain_action_hash"),
     )
+
+
+def _genlayer_target_hash(body: dict[str, Any]) -> str | None:
+    binding = body.get("genlayer_binding")
+    if binding is None:
+        return None
+    if not isinstance(binding, dict):
+        raise ValueError("GENLAYER_BINDING_OBJECT_REQUIRED")
+    return binding["target_hash"]
+
+
+def _genlayer_expires_at(body: dict[str, Any]) -> int | None:
+    binding = body.get("genlayer_binding")
+    if binding is None:
+        return None
+    if not isinstance(binding, dict):
+        raise ValueError("GENLAYER_BINDING_OBJECT_REQUIRED")
+    value = binding.get("expires_at")
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("EXPIRES_AT_FORMAT")
+    return value
 
 
 def make_server(

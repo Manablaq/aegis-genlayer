@@ -42,6 +42,12 @@ receipt once. Direct caller-supplied evaluation is not exposed. The UI does
 not fabricate provider attestations or claim that a request succeeded when the
 backend rejects it.
 
+The GenLayer route is available only for intents created with the exact
+contract-compatible binding: the policy's on-chain action hash, address-shaped
+agent and recipient, and the target hash used by `submit_intent`. Generic
+off-chain demo intents are deliberately rejected rather than treated as
+on-chain-authorized.
+
 For a browser-to-backend session, configure the API with an exact origin:
 
 ```sh

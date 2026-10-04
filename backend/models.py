@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -81,6 +82,52 @@ def action_intent(*, intent_id: str, subject: str, policy_id: str, policy_versio
     )
 
 
+_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def chain_action_subject(*, action_hash: str, target_hash: str, payload_hash: str, agent: str, consumer: str, value: int) -> str:
+    """Mirror AegisActionFirewall's byte-level action-subject formula."""
+    if not _ADDRESS_RE.fullmatch(agent) or not _ADDRESS_RE.fullmatch(consumer):
+        raise ValueError("CHAIN_ADDRESS_FORMAT")
+    try:
+        action = bytes.fromhex(action_hash.removeprefix("0x"))
+        target = bytes.fromhex(target_hash.removeprefix("0x"))
+        payload = bytes.fromhex(payload_hash.removeprefix("0x"))
+    except (AttributeError, ValueError) as exc:
+        raise ValueError("CHAIN_DIGEST_FORMAT") from exc
+    if any(len(value_bytes) != 32 for value_bytes in (action, target, payload)):
+        raise ValueError("CHAIN_DIGEST_FORMAT")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("CHAIN_VALUE_FORMAT")
+    domain = hashlib.sha256(b"AEGIS/V1/ACTION_SUBJECT").digest()
+    return hashlib.sha256(
+        domain
+        + action
+        + target
+        + payload
+        + bytes.fromhex(agent[2:])
+        + bytes.fromhex(consumer[2:])
+        + value.to_bytes(32, byteorder="big", signed=False)
+    ).hexdigest()
+
+
+def chain_action_intent(*, intent_id: str, subject: str, policy_id: str) -> str:
+    """Mirror AegisActionFirewall's byte-level action-intent formula."""
+    try:
+        intent_bytes = bytes.fromhex(intent_id.removeprefix("0x"))
+        subject_bytes = bytes.fromhex(subject.removeprefix("0x"))
+    except (AttributeError, ValueError) as exc:
+        raise ValueError("CHAIN_DIGEST_FORMAT") from exc
+    if len(intent_bytes) != 32 or len(subject_bytes) != 32:
+        raise ValueError("CHAIN_DIGEST_FORMAT")
+    return hashlib.sha256(
+        hashlib.sha256(b"AEGIS/V1/ACTION_INTENT").digest()
+        + intent_bytes
+        + subject_bytes
+        + policy_id.encode("utf-8")
+    ).hexdigest()
+
+
 @dataclass(frozen=True)
 class Attestation:
     provider_id: str
@@ -146,6 +193,7 @@ class Policy:
     intent_ttl_seconds: int
     repair_window_seconds: int
     active: bool = True
+    onchain_action_hash: str | None = None
 
     def validate(self) -> None:
         if not self.policy_id or self.version <= 0:
@@ -167,6 +215,13 @@ class Policy:
         for source_id, prefix in self.approved_sources.items():
             if not source_id or not _safe_https_reference(prefix):
                 raise ValueError("approved sources must use canonical HTTPS prefixes")
+        if self.onchain_action_hash is not None:
+            if not isinstance(self.onchain_action_hash, str) or len(self.onchain_action_hash) != 64:
+                raise ValueError("onchain action hash format")
+            try:
+                bytes.fromhex(self.onchain_action_hash)
+            except ValueError as exc:
+                raise ValueError("onchain action hash format") from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -183,6 +238,7 @@ class Policy:
             "intent_ttl_seconds": self.intent_ttl_seconds,
             "repair_window_seconds": self.repair_window_seconds,
             "active": self.active,
+            "onchain_action_hash": self.onchain_action_hash,
         }
 
 
@@ -207,6 +263,8 @@ class Intent:
     reason: str = ""
     attestations: list[Attestation] = field(default_factory=list)
     receipt_id: str | None = None
+    onchain_target_hash: str | None = None
+    onchain_evidence_digest: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -229,6 +287,8 @@ class Intent:
             "reason": self.reason,
             "attestations": [item.to_dict() for item in self.attestations],
             "receipt_id": self.receipt_id,
+            "onchain_target_hash": self.onchain_target_hash,
+            "onchain_evidence_digest": self.onchain_evidence_digest,
         }
 
 

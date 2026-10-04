@@ -20,6 +20,8 @@ from .models import (
     _safe_https_reference,
     action_intent,
     action_subject,
+    chain_action_intent,
+    chain_action_subject,
     canonical_bytes,
     digest_hex,
 )
@@ -119,6 +121,8 @@ class AegisEngine:
         value: int,
         payload_hash: str,
         attestations: list[Attestation],
+        onchain_target_hash: str | None = None,
+        expires_at: int | None = None,
     ) -> Intent:
         with self._lock:
             policy = self._policy(policy_id, policy_version)
@@ -132,16 +136,49 @@ class AegisEngine:
                 raise ValidationError("VALUE_FORMAT")
             if not all(isinstance(field, str) and field for field in (agent, action_type, target, recipient)):
                 raise ValidationError("ACTION_FIELDS_EMPTY")
+            if onchain_target_hash is not None:
+                if policy.onchain_action_hash is None:
+                    raise ValidationError("ONCHAIN_ACTION_HASH_NOT_CONFIGURED")
+                if not _is_digest(onchain_target_hash):
+                    raise ValidationError("ONCHAIN_TARGET_DIGEST")
+            if expires_at is not None and onchain_target_hash is None:
+                raise ValidationError("EXPIRES_AT_REQUIRES_ONCHAIN_BINDING")
             now = self.clock()
-            expires_at = now + policy.intent_ttl_seconds
-            subject = action_subject(
-                agent=agent,
-                action_type=action_type,
-                target=target,
-                recipient=recipient,
-                value=value,
-                payload_hash=payload_hash,
-            )
+            effective_expires_at = now + policy.intent_ttl_seconds if expires_at is None else expires_at
+            if isinstance(effective_expires_at, bool) or not isinstance(effective_expires_at, int):
+                raise ValidationError("EXPIRES_AT_FORMAT")
+            if effective_expires_at <= now or effective_expires_at > now + policy.intent_ttl_seconds:
+                raise ValidationError("INTENT_LIMIT")
+            evidence_digest = _attestation_fingerprint(attestations)
+            if onchain_target_hash is None:
+                subject = action_subject(
+                    agent=agent,
+                    action_type=action_type,
+                    target=target,
+                    recipient=recipient,
+                    value=value,
+                    payload_hash=payload_hash,
+                )
+                intent_digest = action_intent(
+                    intent_id=intent_id,
+                    subject=subject,
+                    policy_id=policy_id,
+                    policy_version=policy_version,
+                )
+                stored_target_hash = None
+                stored_evidence_digest = None
+            else:
+                subject = chain_action_subject(
+                    action_hash=policy.onchain_action_hash,
+                    target_hash=onchain_target_hash,
+                    payload_hash=payload_hash,
+                    agent=agent,
+                    consumer=recipient,
+                    value=value,
+                )
+                intent_digest = chain_action_intent(intent_id=intent_id, subject=subject, policy_id=policy_id)
+                stored_target_hash = onchain_target_hash
+                stored_evidence_digest = evidence_digest
             record = Intent(
                 intent_id=intent_id,
                 policy_id=policy_id,
@@ -153,16 +190,13 @@ class AegisEngine:
                 value=value,
                 payload_hash=payload_hash,
                 created_at=now,
-                expires_at=expires_at,
-                repair_deadline=expires_at + policy.repair_window_seconds,
+                expires_at=effective_expires_at,
+                repair_deadline=effective_expires_at + policy.repair_window_seconds,
                 action_subject=subject,
-                action_intent=action_intent(
-                    intent_id=intent_id,
-                    subject=subject,
-                    policy_id=policy_id,
-                    policy_version=policy_version,
-                ),
+                action_intent=intent_digest,
                 attestations=list(attestations),
+                onchain_target_hash=stored_target_hash,
+                onchain_evidence_digest=stored_evidence_digest,
             )
             self.intents[intent_id] = record
             self._persist()
@@ -223,6 +257,8 @@ class AegisEngine:
             intent = self._intent(intent_id)
             if intent.state != IntentState.PENDING:
                 raise DecisionError("INTENT_NOT_PENDING")
+            if intent.onchain_target_hash is None or intent.onchain_evidence_digest is None:
+                raise DecisionError("GENLAYER_BINDING_REQUIRED")
             if consensus_decision not in {"AUTHORIZE", "DENY"}:
                 raise DecisionError("DECISION_TOKEN")
             if consensus_decision == "DENY":
@@ -263,6 +299,8 @@ class AegisEngine:
                 raise ValidationError("EVIDENCE_COUNT")
             intent.attestations = list(attestations)
             intent.evidence_revision += 1
+            if intent.onchain_target_hash is not None:
+                intent.onchain_evidence_digest = _attestation_fingerprint(attestations)
             intent.state = IntentState.PENDING
             intent.reason = "EVIDENCE_REPLACED"
             self._persist()
@@ -378,6 +416,7 @@ class AegisEngine:
                 maximum_age_seconds=int(raw["maximum_age_seconds"]),
                 intent_ttl_seconds=int(raw["intent_ttl_seconds"]),
                 repair_window_seconds=int(raw["repair_window_seconds"]), active=bool(raw["active"]),
+                onchain_action_hash=raw.get("onchain_action_hash"),
             )
             policy.validate()
             if key != f"{policy.policy_id}:{policy.version}":
@@ -397,6 +436,8 @@ class AegisEngine:
                 evidence_revision=int(raw["evidence_revision"]), state=IntentState(raw["state"]),
                 reason=raw["reason"], attestations=[Attestation(**item) for item in raw["attestations"]],
                 receipt_id=raw["receipt_id"],
+                onchain_target_hash=raw.get("onchain_target_hash"),
+                onchain_evidence_digest=raw.get("onchain_evidence_digest"),
             )
             if key != intent.intent_id or not _is_digest(intent.intent_id) or not _is_digest(intent.payload_hash):
                 raise ValueError("persisted intent identity mismatch")
@@ -412,21 +453,45 @@ class AegisEngine:
                 raise ValueError("persisted intent deadline order invalid")
             if intent.evidence_revision < 0:
                 raise ValueError("persisted evidence revision invalid")
-            if intent.action_subject != action_subject(
-                agent=intent.agent,
-                action_type=intent.action_type,
-                target=intent.target,
-                recipient=intent.recipient,
-                value=intent.value,
-                payload_hash=intent.payload_hash,
-            ):
+            policy = self.policies[f"{intent.policy_id}:{intent.policy_version}"]
+            if intent.onchain_target_hash is None:
+                if intent.onchain_evidence_digest is not None:
+                    raise ValueError("persisted onchain evidence binding mismatch")
+                expected_subject = action_subject(
+                    agent=intent.agent,
+                    action_type=intent.action_type,
+                    target=intent.target,
+                    recipient=intent.recipient,
+                    value=intent.value,
+                    payload_hash=intent.payload_hash,
+                )
+                expected_action_intent = action_intent(
+                    intent_id=intent.intent_id,
+                    subject=intent.action_subject,
+                    policy_id=intent.policy_id,
+                    policy_version=intent.policy_version,
+                )
+            else:
+                if policy.onchain_action_hash is None or intent.onchain_evidence_digest is None:
+                    raise ValueError("persisted onchain binding incomplete")
+                expected_subject = chain_action_subject(
+                    action_hash=policy.onchain_action_hash,
+                    target_hash=intent.onchain_target_hash,
+                    payload_hash=intent.payload_hash,
+                    agent=intent.agent,
+                    consumer=intent.recipient,
+                    value=intent.value,
+                )
+                expected_action_intent = chain_action_intent(
+                    intent_id=intent.intent_id,
+                    subject=intent.action_subject,
+                    policy_id=intent.policy_id,
+                )
+                if intent.onchain_evidence_digest != _attestation_fingerprint(intent.attestations):
+                    raise ValueError("persisted onchain evidence digest mismatch")
+            if intent.action_subject != expected_subject:
                 raise ValueError("persisted action subject mismatch")
-            if intent.action_intent != action_intent(
-                intent_id=intent.intent_id,
-                subject=intent.action_subject,
-                policy_id=intent.policy_id,
-                policy_version=intent.policy_version,
-            ):
+            if intent.action_intent != expected_action_intent:
                 raise ValueError("persisted action intent mismatch")
             if not isinstance(intent.attestations, list):
                 raise ValueError("persisted attestations invalid")
