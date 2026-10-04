@@ -180,7 +180,12 @@ def _rlp_decode_one(data: bytes, index: int = 0) -> tuple[bytes | list[Any], int
     return items, end
 
 
-def decode_transaction_call_data(value: str, *, expected_intent_id: str | None = None) -> dict[str, Any]:
+def decode_transaction_call_data(
+    value: str,
+    *,
+    expected_intent_id: str | None = None,
+    expected_method: str | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]+", value) or len(value) % 2:
         raise GenLayerAuthorityError("TX_CALLDATA_FORMAT")
     raw = bytes.fromhex(value)
@@ -201,7 +206,8 @@ def decode_transaction_call_data(value: str, *, expected_intent_id: str | None =
         call = _decode_calldata(envelope[0])[0]
     except GenLayerAuthorityError:
         raise
-    if not isinstance(call, dict) or call.get("method") not in {"decide", "edecid"}:
+    allowed_methods = {expected_method} if expected_method is not None else {"decide", "edecid"}
+    if not isinstance(call, dict) or call.get("method") not in allowed_methods:
         raise GenLayerAuthorityError("TX_CALLDATA_METHOD")
     args = call.get("args")
     if not isinstance(args, list) or not args or not isinstance(args[0], bytes) or len(args[0]) != 32:
@@ -210,7 +216,7 @@ def decode_transaction_call_data(value: str, *, expected_intent_id: str | None =
         expected = _digest_bytes(expected_intent_id, "INTENT_ID")
         if args[0] != expected:
             raise GenLayerAuthorityError("GENLAYER_INTENT_MISMATCH")
-    return {"intent_id": "0x" + args[0].hex(), "method": call["method"], "raw": raw.hex()}
+    return {"intent_id": "0x" + args[0].hex(), "method": call["method"], "args": args, "raw": raw.hex()}
 
 
 def _encode_uleb128(value: int) -> bytes:
@@ -298,6 +304,18 @@ class GenLayerProof:
     value: int
     expires_at: int
     repair_deadline: int
+
+
+@dataclass(frozen=True)
+class GenLayerLifecycleProof:
+    transaction_id: str
+    intent_id: str
+    method: str
+    status: str
+    execution: str
+    evidence_digest: str | None = None
+    receipt_id: str | None = None
+    action_intent: str | None = None
 
 
 class GenLayerAuthority:
@@ -485,4 +503,98 @@ class GenLayerAuthority:
             value=value,
             expires_at=expires_at,
             repair_deadline=repair_deadline,
+        )
+
+    def _verify_finalized_firewall_write(
+        self,
+        *,
+        transaction_id: str,
+        intent_id: str,
+        method: str,
+        expected_args: list[bytes],
+        bind_first_arg_to_intent: bool = True,
+    ) -> tuple[str, dict[str, Any]]:
+        tx_id = _require_digest(transaction_id, "GENLAYER_TX")
+        expected_intent = _digest_bytes(intent_id, "INTENT_ID")
+        status = self._rpc("gen_getTransactionStatus", [{"txId": tx_id}])
+        if not isinstance(status, dict) or status.get("statusCode") != 7 or str(status.get("status", "")).upper() != "FINALIZED":
+            raise GenLayerAuthorityError("GENLAYER_NOT_FINALIZED")
+        receipt = self._rpc("gen_getTransactionReceipt", [{"txId": tx_id}])
+        if not isinstance(receipt, dict):
+            raise GenLayerAuthorityError("GENLAYER_RECEIPT_INVALID")
+        if str(receipt.get("id", "")).lower() != tx_id:
+            raise GenLayerAuthorityError("GENLAYER_RECEIPT_ID_MISMATCH")
+        if receipt.get("status") != 7 or (receipt.get("statusName") is not None and str(receipt.get("statusName")).upper() != "FINALIZED"):
+            raise GenLayerAuthorityError("GENLAYER_RECEIPT_NOT_FINALIZED")
+        if receipt.get("txExecutionResult") != 1 or receipt.get("result") != 1:
+            raise GenLayerAuthorityError("GENLAYER_EXECUTION_FAILED")
+        if str(receipt.get("recipient", "")).lower() != self.firewall:
+            raise GenLayerAuthorityError("GENLAYER_FIREWALL_MISMATCH")
+        decoded = decode_transaction_call_data(
+            str(receipt.get("txCallData", "")),
+            expected_intent_id="0x" + expected_intent.hex() if bind_first_arg_to_intent else None,
+            expected_method=method,
+        )
+        args = decoded.get("args")
+        if not isinstance(args, list) or len(args) != len(expected_args) or any(left != right for left, right in zip(args, expected_args)):
+            raise GenLayerAuthorityError("GENLAYER_CALLDATA_MISMATCH")
+        trace = self._rpc("gen_dbg_traceTransaction", [{"txID": tx_id, "round": 0}])
+        if not isinstance(trace, dict) or trace.get("result_code") != 0:
+            raise GenLayerAuthorityError("GENLAYER_TRACE_FAILED")
+        return tx_id, self._read_intent("0x" + expected_intent.hex())
+
+    def verify_evidence_replacement(
+        self,
+        *,
+        transaction_id: str,
+        intent_id: str,
+        evidence_digest: str,
+        expected_revision: int,
+    ) -> GenLayerLifecycleProof:
+        tx_id, onchain = self._verify_finalized_firewall_write(
+            transaction_id=transaction_id,
+            intent_id=intent_id,
+            method="replace_evidence",
+            expected_args=[_digest_bytes(intent_id, "INTENT_ID"), _digest_bytes(evidence_digest, "EVIDENCE_DIGEST")],
+        )
+        if onchain.get("state") != 1 or onchain.get("reason") != "EVIDENCE_REPLACED" or onchain.get("evidence_revision") != expected_revision + 1:
+            raise GenLayerAuthorityError("GENLAYER_REPAIR_STATE_MISMATCH")
+        return GenLayerLifecycleProof(
+            transaction_id=tx_id,
+            intent_id="0x" + _digest_bytes(intent_id, "INTENT_ID").hex(),
+            method="replace_evidence",
+            status="FINALIZED",
+            execution="FINISHED_WITH_RETURN",
+            evidence_digest="0x" + _digest_bytes(evidence_digest, "EVIDENCE_DIGEST").hex(),
+        )
+
+    def verify_receipt_consumption(
+        self,
+        *,
+        transaction_id: str,
+        intent_id: str,
+        receipt_id: str,
+        action_intent: str,
+        expected_consumer: str,
+    ) -> GenLayerLifecycleProof:
+        tx_id, onchain = self._verify_finalized_firewall_write(
+            transaction_id=transaction_id,
+            intent_id=intent_id,
+            method="consume_receipt",
+            expected_args=[_digest_bytes(receipt_id, "RECEIPT_ID"), _digest_bytes(action_intent, "ACTION_INTENT")],
+            bind_first_arg_to_intent=False,
+        )
+        consumer = onchain.get("consumer")
+        if not isinstance(consumer, str) or consumer.lower() != _require_address(expected_consumer, "CONSUMER"):
+            raise GenLayerAuthorityError("GENLAYER_CONSUMER_MISMATCH")
+        if onchain.get("state") != 6 or onchain.get("reason") != "CONSUMED" or onchain.get("receipt_id") != _digest_bytes(receipt_id, "RECEIPT_ID") or onchain.get("action_intent") != _digest_bytes(action_intent, "ACTION_INTENT"):
+            raise GenLayerAuthorityError("GENLAYER_RECEIPT_STATE_MISMATCH")
+        return GenLayerLifecycleProof(
+            transaction_id=tx_id,
+            intent_id="0x" + _digest_bytes(intent_id, "INTENT_ID").hex(),
+            method="consume_receipt",
+            status="FINALIZED",
+            execution="FINISHED_WITH_RETURN",
+            receipt_id="0x" + _digest_bytes(receipt_id, "RECEIPT_ID").hex(),
+            action_intent="0x" + _digest_bytes(action_intent, "ACTION_INTENT").hex(),
         )

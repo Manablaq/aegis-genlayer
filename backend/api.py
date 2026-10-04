@@ -8,7 +8,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from .engine import AegisEngine, DecisionError, ValidationError
+from .engine import AegisEngine, DecisionError, ValidationError, _attestation_fingerprint
 from .genlayer_authority import GenLayerAuthority, GenLayerAuthorityError
 from .models import Attestation, Policy
 from .wallet_auth import WalletAuthError, create_challenge, normalize_address, session_address, verify_challenge
@@ -130,19 +130,47 @@ class AegisHandler(BaseHTTPRequestHandler):
             if self.path.startswith("/v1/intents/") and self.path.endswith("/replace-evidence"):
                 intent_id = self.path.removeprefix("/v1/intents/").removesuffix("/replace-evidence")
                 self._require_agent(body.get("caller"), wallet)
+                authority = getattr(self, "genlayer_authority", None)
+                intent_before = self.engine.intents.get(intent_id)
+                if authority is None or intent_before is None or intent_before.onchain_target_hash is None:
+                    self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "GENLAYER_BINDING_REQUIRED"})
+                    return
+                attestations = [Attestation(**item) for item in body["attestations"]]
+                proof = authority.verify_evidence_replacement(
+                    transaction_id=body["genlayer_tx_id"],
+                    intent_id=intent_id,
+                    evidence_digest=_attestation_fingerprint(attestations),
+                    expected_revision=intent_before.evidence_revision,
+                )
                 intent = self.engine.replace_evidence(
                     intent_id=intent_id, caller=body["caller"],
-                    attestations=[Attestation(**item) for item in body["attestations"]],
+                    attestations=attestations,
                 )
-                self._send(HTTPStatus.OK, intent.to_dict())
+                response = intent.to_dict()
+                response["genlayer_proof"] = proof.__dict__
+                self._send(HTTPStatus.OK, response)
                 return
             if self.path == "/v1/receipts/consume":
                 self._require_agent(body.get("consumer"), wallet)
+                authority = getattr(self, "genlayer_authority", None)
+                receipt_before = self.engine.receipts.get(body.get("receipt_id"))
+                if authority is None or receipt_before is None:
+                    self._send(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "GENLAYER_BINDING_REQUIRED"})
+                    return
+                proof = authority.verify_receipt_consumption(
+                    transaction_id=body["genlayer_tx_id"],
+                    intent_id=receipt_before.intent_id,
+                    receipt_id=body["receipt_id"],
+                    action_intent=body["action_intent"],
+                    expected_consumer=body["consumer"],
+                )
                 receipt = self.engine.consume_receipt(
                     receipt_id=body["receipt_id"], consumer=body["consumer"],
                     action_intent_value=body["action_intent"],
                 )
-                self._send(HTTPStatus.OK, receipt.to_dict())
+                response = receipt.to_dict()
+                response["genlayer_proof"] = proof.__dict__
+                self._send(HTTPStatus.OK, response)
                 return
             self._send(HTTPStatus.NOT_FOUND, {"error": "NOT_FOUND"})
         except GenLayerAuthorityError as exc:

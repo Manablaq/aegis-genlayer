@@ -15,9 +15,15 @@ describe the same wallet-authenticated product.
 - Authenticated operators can register policies, create intents, verify
   finalized GenLayer decisions, replace evidence during `REPAIR_REQUIRED`,
   refresh persisted state, and consume a receipt once.
-- GenLayer verification accepts a finalized transaction hash from the
-  explorer, not the Aegis intent ID. The hash is `0x` followed by 64
-  hexadecimal characters.
+- The live workspace submits the deployed GenLayer lifecycle through the
+  connected wallet: `submit_intent`, finalized `decide`, and one-time
+  `consume_receipt` writes. It waits for `FINALIZED` plus successful execution
+  before advancing and sends the finalized decision to the backend parity
+  verifier. Evidence replacement uses the deployed `replace_evidence` write.
+- Recovery accepts a finalized gateway transaction hash from the explorer,
+  not the Aegis intent ID. The hash is `0x` followed by 64 hexadecimal
+  characters, and it is still independently verified; it is not an authority
+  input.
 
 ## Required checks
 

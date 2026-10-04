@@ -129,14 +129,21 @@ finalized trace or firewall state is rejected. A direct caller-supplied
 ### `POST /v1/intents/{intent_id}/replace-evidence`
 
 Replaces evidence only during `REPAIR_REQUIRED`, only for the authorized
-agent, and only with a valid replacement. The revision increments while the
-action subject, action-intent digest, and repair deadline remain unchanged.
+agent, and only with a valid replacement. The request must include the
+finalized Bradbury `genlayer_tx_id` for the deployed firewall's
+`replace_evidence` call. The backend verifies that transaction, the exact new
+evidence digest, and the finalized firewall read-back before mirroring it. The
+revision increments while the action subject, action-intent digest, and repair
+deadline remain unchanged.
 
 ### `POST /v1/receipts/consume`
 
-Consumes a receipt once for its exact consumer and action-intent digest.
-Replays, wrong consumers, wrong action intents, expired receipts, and unknown
-receipts are rejected.
+Consumes a receipt once for its exact consumer and action-intent digest. The
+request must include the finalized Bradbury `genlayer_tx_id` for the deployed
+firewall's `consume_receipt` call. The backend verifies finality, exact
+calldata, successful execution, and the finalized `CONSUMED` read-back before
+mirroring it. Replays, wrong consumers, wrong action intents, expired receipts,
+and unknown receipts are rejected.
 
 ## Error behavior
 

@@ -36,10 +36,15 @@ export interface IntentRecord {
   reason: string
   attestations: Array<Record<string, unknown>>
   receipt_id: string | null
+  onchain_target_hash: string | null
+  onchain_evidence_digest: string | null
 }
 
 export class BackendApiError extends Error {
-  constructor(public readonly status: number, public readonly code: string) {
+  constructor(
+    public readonly status: number,
+    public readonly code: string
+  ) {
     super(code)
     this.name = 'BackendApiError'
   }
@@ -61,7 +66,12 @@ async function requestJson<T>(config: BackendConfig, path: string, init: Request
 
   let response: Response
   try {
-    response = await fetch(endpoint(config, path), { ...init, headers, cache: 'no-store', credentials: 'include' })
+    response = await fetch(endpoint(config, path), {
+      ...init,
+      headers,
+      cache: 'no-store',
+      credentials: 'include'
+    })
   } catch {
     throw new Error('BACKEND_UNREACHABLE')
   }
@@ -73,9 +83,7 @@ async function requestJson<T>(config: BackendConfig, path: string, init: Request
     payload = null
   }
   if (!response.ok) {
-    const code = typeof payload === 'object' && payload !== null && 'error' in payload && typeof payload.error === 'string'
-      ? payload.error
-      : `HTTP_${response.status}`
+    const code = typeof payload === 'object' && payload !== null && 'error' in payload && typeof payload.error === 'string' ? payload.error : `HTTP_${response.status}`
     throw new BackendApiError(response.status, code)
   }
   return payload as T
@@ -83,16 +91,29 @@ async function requestJson<T>(config: BackendConfig, path: string, init: Request
 
 export async function authenticateWallet(config: BackendConfig, provider: WalletProvider, address: string, chainId: string | null): Promise<void> {
   if (!chainId) throw new Error('WALLET_CHAIN_REQUIRED')
-  const challenge = await requestJson<WalletChallenge>(config, '/auth/challenge', {
-    method: 'POST',
-    body: JSON.stringify({ address, chain_id: chainId }),
-  }, false)
-  const signature = await provider.request({ method: 'personal_sign', params: [challenge.message, address] })
+  const challenge = await requestJson<WalletChallenge>(
+    config,
+    '/auth/challenge',
+    {
+      method: 'POST',
+      body: JSON.stringify({ address, chain_id: chainId })
+    },
+    false
+  )
+  const signature = await provider.request({
+    method: 'personal_sign',
+    params: [challenge.message, address]
+  })
   if (typeof signature !== 'string' || !signature) throw new Error('WALLET_SIGNATURE_REQUIRED')
-  await requestJson<{ authenticated: boolean }>(config, '/auth/verify', {
-    method: 'POST',
-    body: JSON.stringify({ address, message: challenge.message, signature }),
-  }, false)
+  await requestJson<{ authenticated: boolean }>(
+    config,
+    '/auth/verify',
+    {
+      method: 'POST',
+      body: JSON.stringify({ address, message: challenge.message, signature })
+    },
+    false
+  )
 }
 
 export function logoutWallet(config: BackendConfig): Promise<{ authenticated: boolean }> {
@@ -118,31 +139,42 @@ export function getIntent(config: BackendConfig, intentId: string): Promise<Inte
 }
 
 export function createIntent(config: BackendConfig, body: Record<string, unknown>): Promise<IntentRecord> {
-  return requestJson<IntentRecord>(config, '/v1/intents', { method: 'POST', body: JSON.stringify(body) })
+  return requestJson<IntentRecord>(config, '/v1/intents', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  })
 }
 
 export function registerPolicy(config: BackendConfig, body: Record<string, unknown>): Promise<{ status: string }> {
-  return requestJson<{ status: string }>(config, '/v1/policies', { method: 'POST', body: JSON.stringify(body) })
+  return requestJson<{ status: string }>(config, '/v1/policies', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  })
 }
 
 export function evaluateWithGenLayer(config: BackendConfig, intentId: string, genlayerTxId: string, decision: 'AUTHORIZE' | 'DENY'): Promise<IntentRecord> {
   return requestJson<IntentRecord>(config, `/v1/intents/${encodeURIComponent(intentId)}/evaluate-genlayer`, {
     method: 'POST',
-    body: JSON.stringify({ genlayer_tx_id: genlayerTxId, decision }),
+    body: JSON.stringify({ genlayer_tx_id: genlayerTxId, decision })
   })
 }
 
-export function replaceEvidence(config: BackendConfig, intentId: string, caller: string, attestations: unknown[]): Promise<IntentRecord> {
+export function replaceEvidence(config: BackendConfig, intentId: string, caller: string, attestations: unknown[], genlayerTxId: string): Promise<IntentRecord> {
   return requestJson<IntentRecord>(config, `/v1/intents/${encodeURIComponent(intentId)}/replace-evidence`, {
     method: 'POST',
-    body: JSON.stringify({ caller, attestations }),
+    body: JSON.stringify({ caller, attestations, genlayer_tx_id: genlayerTxId })
   })
 }
 
-export function consumeReceipt(config: BackendConfig, receiptId: string, consumer: string, actionIntent: string): Promise<Record<string, unknown>> {
+export function consumeReceipt(config: BackendConfig, receiptId: string, consumer: string, actionIntent: string, genlayerTxId: string): Promise<Record<string, unknown>> {
   return requestJson<Record<string, unknown>>(config, '/v1/receipts/consume', {
     method: 'POST',
-    body: JSON.stringify({ receipt_id: receiptId, consumer, action_intent: actionIntent }),
+    body: JSON.stringify({
+      receipt_id: receiptId,
+      consumer,
+      action_intent: actionIntent,
+      genlayer_tx_id: genlayerTxId
+    })
   })
 }
 

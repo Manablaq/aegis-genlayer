@@ -59,7 +59,11 @@ The GenLayer route is available only for intents created with the exact
 contract-compatible binding: the policy's on-chain action hash, address-shaped
 agent and recipient, and the target hash used by `submit_intent`. Generic
 off-chain demo intents are deliberately rejected rather than treated as
-on-chain-authorized.
+on-chain-authorized. The live workspace now submits the contract lifecycle
+itself through `genlayer-js`: `submit_intent` is finalized first, then the
+wallet submits `decide` to the deployed gateway, and the finalized decision is
+passed to the backend's independent parity verifier. The wallet also submits
+`replace_evidence` and `consume_receipt` for those lifecycle stages.
 
 ### First use
 
@@ -73,12 +77,20 @@ on-chain-authorized.
 4. Create an intent with its evidence. For the GenLayer path, use 20-byte
    `0x` addresses, the policy's on-chain action hash, a target hash, and an
    expiry.
-5. Copy the finalized GenLayer transaction hash from the GenLayer explorer
-   (not the Aegis intent ID), paste it into the `GenLayer` tab, and verify the
-   expected decision. The transaction hash is `0x` followed by 64 hexadecimal
-   characters.
-6. If the result is `REPAIR_REQUIRED`, replace evidence with the bound agent;
-   once authorized, consume the receipt exactly once from the `Consume` tab.
+5. In the `GenLayer` tab, click `Submit intent to Bradbury` and approve the
+   wallet transaction. Wait for the UI to report finalized execution, then
+   click `Run consensus and verify`. The second wallet transaction calls the
+   deployed gateway; the backend verifies its finalized hash and exact state
+   parity automatically.
+6. If the result is `REPAIR_REQUIRED`, provide replacement evidence and submit
+   it through the wallet. Once authorized, the `Consume` tab submits the
+   one-time receipt consumption on-chain before mirroring the result in the
+   backend.
+
+The recovery disclosure remains available for an interrupted browser session:
+an operator can paste an already finalized gateway decision hash from the
+GenLayer explorer. This does not bypass verification; the backend still checks
+finality, execution, recipient, calldata, trace, and firewall read-back.
 
 The public proof record does not require a token. It is a verified Bradbury
 record and intentionally cannot create tenant events. The server-side bearer

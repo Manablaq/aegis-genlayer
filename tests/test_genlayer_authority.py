@@ -8,7 +8,9 @@ from backend.genlayer_authority import (
     GenLayerAuthority,
     GenLayerAuthorityError,
     decode_transaction_call_data,
+    _encode_calldata,
     encode_read_call,
+    _rlp_encode_bytes,
 )
 
 
@@ -23,6 +25,17 @@ EVIDENCE_DIGEST = "77" * 32
 AGENT = "0x" + "88" * 20
 CONSUMER = "0x" + "33" * 20
 CALL_DATA = "f84cb849160461726773158302" + "99" * 32 + "840141454749535f544553545f414c4c4f57066d6574686f64346564656369646500"
+
+
+def write_call_data(method: str, args: list[bytes]) -> str:
+    call = _encode_calldata({"args": args, "method": method})
+    payload = _rlp_encode_bytes(call) + _rlp_encode_bytes(b"\x00")
+    if len(payload) <= 55:
+        envelope = bytes([0xC0 + len(payload)]) + payload
+    else:
+        size = len(payload).to_bytes((len(payload).bit_length() + 7) // 8, "big")
+        envelope = bytes([0xF7 + len(size)]) + size + payload
+    return envelope.hex()
 
 
 class FakeAuthority(GenLayerAuthority):
@@ -171,6 +184,38 @@ class GenLayerAuthorityTests(unittest.TestCase):
                 expected_expires_at=100,
                 expected_repair_deadline=200,
             )
+
+    def test_verifies_finalized_evidence_replacement(self):
+        authority = FakeAuthority(
+            {
+                "gen_getTransactionStatus": {"status": "Finalized", "statusCode": 7},
+                "gen_getTransactionReceipt": {
+                    "id": TX_ID, "recipient": DEFAULT_FIREWALL, "status": 7,
+                    "statusName": "FINALIZED", "txExecutionResult": 1, "result": 1,
+                    "txCallData": write_call_data("replace_evidence", [bytes.fromhex("99" * 32), bytes.fromhex(EVIDENCE_DIGEST)]),
+                },
+                "gen_dbg_traceTransaction": {"result_code": 0},
+            }
+        )
+        authority._read_intent = lambda intent_id: {"state": 1, "reason": "EVIDENCE_REPLACED", "evidence_digest": bytes.fromhex(EVIDENCE_DIGEST), "evidence_revision": 1}  # type: ignore[method-assign]
+        proof = authority.verify_evidence_replacement(transaction_id=TX_ID, intent_id=INTENT_ID, evidence_digest=EVIDENCE_DIGEST, expected_revision=0)
+        self.assertEqual(proof.method, "replace_evidence")
+
+    def test_verifies_finalized_receipt_consumption(self):
+        authority = FakeAuthority(
+            {
+                "gen_getTransactionStatus": {"status": "Finalized", "statusCode": 7},
+                "gen_getTransactionReceipt": {
+                    "id": TX_ID, "recipient": DEFAULT_FIREWALL, "status": 7,
+                    "statusName": "FINALIZED", "txExecutionResult": 1, "result": 1,
+                    "txCallData": write_call_data("consume_receipt", [bytes.fromhex("77" * 32), bytes.fromhex(ACTION_INTENT)]),
+                },
+                "gen_dbg_traceTransaction": {"result_code": 0},
+            }
+        )
+        authority._read_intent = lambda intent_id: {"state": 6, "reason": "CONSUMED", "consumer": CONSUMER, "receipt_id": bytes.fromhex("77" * 32), "action_intent": bytes.fromhex(ACTION_INTENT)}  # type: ignore[method-assign]
+        proof = authority.verify_receipt_consumption(transaction_id=TX_ID, intent_id=INTENT_ID, receipt_id="77" * 32, action_intent=ACTION_INTENT, expected_consumer=CONSUMER)
+        self.assertEqual(proof.method, "consume_receipt")
 
 
 if __name__ == "__main__":
