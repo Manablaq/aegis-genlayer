@@ -44,14 +44,27 @@ action-intent `77ec96fcfd7ebc68d78ce20b1b39d9ddcbc9d071794f5e2eb48661ebd3330ab2`
 evidence digest `d582c0a4e561261d684e416aa6c6e3bf379690498e49f3c0e3ad26c86300e185`,
 expiry `1791193896`, and state `PENDING`.
 
-The first positive gateway call used the wrong CLI argument type and failed
-before contract logic (`context` arrived as a list). The corrected call sends
-the exact same canonical evidence as an explicit string and reached 5/5
-agreement with `FINISHED_WITH_RETURN`. Its decision transaction is
-`0x56585b6b33da2f2865d923dbeab9f37e87864abdc16878161a253ca3efd93c08`.
-It remains `ACCEPTED` until Bradbury's finalization window; it must not be
-used by the API evaluator before status `FINALIZED` and a successful firewall
-read-back.
+The first gateway call used the wrong CLI argument type and failed before
+contract logic (`context` arrived as a list). The corrected call sent the
+canonical evidence as an explicit string and reached 5/5 agreement with
+`FINISHED_WITH_RETURN`. Its decision transaction,
+`0x56585b6b33da2f2865d923dbeab9f37e87864abdc16878161a253ca3efd93c08`, later
+finalized as `DENY`; the firewall read-back was state `4`,
+`CONSENSUS_DENIED`, with no receipt. The production evaluator accepted that
+finalized proof as `GENLAYER_FINALIZED_DENIED` and preserved exact binding
+parity.
+
+The positive case was then rebuilt with a fresh, currently valid Ed25519
+attestation whose payload hash equals the requested action payload and whose
+statement explicitly identifies `release_payment:invoice-42`. The new intent
+is `5b08d64b7da034b0f4f038922c639120933f5628a271e7b33b8a92c8e9452ec2`.
+Its firewall submission is
+`0x952d0bbc11bff40faa0d94bf9061fa60be95645c2e4bc7740436dbf84e0214fb` and
+its gateway decision is
+`0xab711c139fa505d11d556519796f968d4019d39cb7e7e78b30d1a750aebe63e5`.
+Both reached 5/5 successful agreement; the decision remains `ACCEPTED` until
+Bradbury finalizes it. The API evaluator must not be called until the receipt
+is `FINALIZED` and the firewall reads back `AUTHORIZED` with a receipt.
 
 The repair test intent binds action hash `0x11…11`, target hash `0x33…33`,
 payload hash `0x44…44`, value `500`, evidence digest `0x55…55`, and a stable
