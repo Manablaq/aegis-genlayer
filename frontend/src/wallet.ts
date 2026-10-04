@@ -65,6 +65,7 @@ export function formatChain(chainId: string | null): string {
     '0x89': 'Polygon',
     '0xa4b1': 'Arbitrum',
     '0x2105': 'Base',
+    '0x107d': 'Bradbury',
   }
   return knownNetworks[chainId.toLowerCase()] ?? `Chain ${chainId}`
 }

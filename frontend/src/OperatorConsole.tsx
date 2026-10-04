@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   AlertCircle,
@@ -44,6 +44,24 @@ function newDigest(): string {
 function parseAttestations(value: string): unknown[] {
   const parsed: unknown = JSON.parse(value)
   if (!Array.isArray(parsed)) throw new Error('Attestations must be a JSON array.')
+  return parsed
+}
+
+function requireDigest(value: string, label: string): string {
+  const normalized = value.trim().replace(/^0x/i, '')
+  if (!/^[0-9a-f]{64}$/i.test(normalized)) throw new Error(`${label} must be exactly 32 bytes (64 hexadecimal characters).`)
+  return normalized
+}
+
+function requireAddress(value: string, label: string): string {
+  const normalized = value.trim()
+  if (!/^0x[0-9a-f]{40}$/i.test(normalized)) throw new Error(`${label} must be a 20-byte 0x address for the GenLayer path.`)
+  return normalized
+}
+
+function requirePositiveInteger(value: string, label: string): number {
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${label} must be a positive integer.`)
   return parsed
 }
 
@@ -101,6 +119,12 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
   const [consumer, setConsumer] = useState('')
   const [actionIntent, setActionIntent] = useState('')
 
+  useEffect(() => {
+    if (!walletAccount) return
+    setCaller(walletAccount)
+    setCreateForm((current) => current.agent === 'agent-1' ? { ...current, agent: walletAccount } : current)
+  }, [walletAccount])
+
   const statusLabel = useMemo(() => {
     if (connection === 'testing') return 'TESTING CONNECTION'
     if (connection === 'connected') return 'BACKEND CONNECTED'
@@ -109,6 +133,11 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
   }, [connection])
 
   const connectBackend = async () => {
+    if (!/^https?:\/\//i.test(backendUrl.trim()) && backendUrl.trim() !== '/api') {
+      setConnection('error')
+      setConnectionMessage('Backend URL must start with http:// or https://.')
+      return
+    }
     setConnection('testing')
     setConnectionMessage('Checking health and authenticated access…')
     setOperationError('')
@@ -169,8 +198,18 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
       const targetHash = createForm.genlayer_target_hash.trim()
       const expiresAt = createForm.genlayer_expires_at.trim()
       const parsedExpiresAt = expiresAt ? Number(expiresAt) : undefined
+      if (!createForm.intent_id.trim()) throw new Error('Intent ID is required.')
+      if (!createForm.policy_id.trim()) throw new Error('Policy ID is required.')
+      if (!Number.isSafeInteger(Number(createForm.policy_version)) || Number(createForm.policy_version) <= 0) throw new Error('Policy version must be a positive integer.')
+      if (!Number.isFinite(Number(createForm.value)) || Number(createForm.value) < 0) throw new Error('Value must be a non-negative number.')
+      requireDigest(createForm.payload_hash, 'Payload hash')
       if (expiresAt && (parsedExpiresAt === undefined || !Number.isSafeInteger(parsedExpiresAt) || parsedExpiresAt <= 0)) throw new Error('GenLayer expiry must be a positive integer timestamp.')
       if (expiresAt && !targetHash) throw new Error('GenLayer target hash is required when an expiry is provided.')
+      if (targetHash) {
+        requireDigest(targetHash, 'GenLayer target hash')
+        requireAddress(createForm.agent, 'Agent')
+        requireAddress(createForm.recipient, 'Recipient')
+      }
       const genlayerBinding = targetHash
         ? { target_hash: targetHash, ...(parsedExpiresAt ? { expires_at: parsedExpiresAt } : {}) }
         : undefined
@@ -194,7 +233,8 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
   const submitGenLayer = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     await runOperation(async () => {
-      if (!genlayerTxId.trim()) throw new Error('Enter the finalized GenLayer transaction ID.')
+      if (!/^0x[0-9a-f]{64}$/i.test(genlayerTxId.trim())) throw new Error('GenLayer transaction ID must be a 0x-prefixed 32-byte hash.')
+      if (!intentId.trim()) throw new Error('Enter an intent ID before verifying finality.')
       const next = await evaluateWithGenLayer(config!, intentId.trim(), genlayerTxId.trim(), consensus)
       setIntent(next)
       setReceiptId(next.receipt_id || '')
@@ -209,6 +249,8 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
     await runOperation(async () => {
       const sources: unknown = JSON.parse(policyForm.approved_sources)
       if (!sources || typeof sources !== 'object' || Array.isArray(sources)) throw new Error('Approved sources must be a JSON object.')
+      const numericFields: Array<[string, string]> = [['version', 'Version'], ['max_value', 'Maximum value'], ['minimum_attestations', 'Minimum attestations'], ['maximum_age_seconds', 'Maximum evidence age'], ['intent_ttl_seconds', 'Intent TTL'], ['repair_window_seconds', 'Repair window']]
+      for (const [key, label] of numericFields) requirePositiveInteger(policyForm[key as keyof typeof policyForm], label)
       const registered = await registerPolicy(config!, {
         policy_id: policyForm.policy_id.trim(),
         version: Number(policyForm.version),
@@ -232,6 +274,8 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
   const submitRepair = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     await runOperation(async () => {
+      if (!intentId.trim()) throw new Error('Enter an intent ID before replacing evidence.')
+      if (!caller.trim()) throw new Error('Caller identity is required.')
       const next = await replaceEvidence(config!, intentId.trim(), caller.trim(), parseAttestations(repairAttestations))
       setIntent(next)
       setOperationMessage(`Evidence revision ${next.evidence_revision} persisted.`)
@@ -241,6 +285,8 @@ export default function OperatorConsole({ walletAccount }: { walletAccount: stri
   const submitConsume = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     await runOperation(async () => {
+      if (!receiptId.trim() || !consumer.trim() || !actionIntent.trim()) throw new Error('Receipt ID, consumer, and action-intent digest are all required.')
+      requireDigest(actionIntent, 'Action-intent digest')
       const receipt = await consumeReceipt(config!, receiptId.trim(), consumer.trim(), actionIntent.trim())
       const next = config ? await getIntent(config, intentId.trim()) : null
       if (next) setIntent(next)
