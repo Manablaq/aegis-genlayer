@@ -68,6 +68,15 @@ record and intentionally cannot create tenant events. The bearer token is held
 in memory for the current tab only and is never committed or bundled into the
 frontend.
 
+### Public sandbox
+
+Visitors can select `Try the sandbox` from the header, hero, proof record, or
+final call-to-action. They can describe an example action and watch the
+evidence, consensus, and one-time receipt stages without a wallet, token,
+transaction, or external request. The result is explicitly labeled as a
+simulation. Real tenant operations remain behind the authenticated operator
+control plane.
+
 For a browser-to-backend session, configure the API with an exact origin:
 
 ```sh
