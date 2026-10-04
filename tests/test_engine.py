@@ -269,6 +269,46 @@ class AegisEngineTests(unittest.TestCase):
         )
         self.assertEqual(intent.onchain_target_hash, target_hash)
         self.assertEqual(intent.onchain_evidence_digest, digest_hex([item.to_dict() for item in intent.attestations]))
+        authorized = engine.evaluate_genlayer(intent_id=intent.intent_id, consensus_decision="AUTHORIZE")
+        self.assertEqual(authorized.state, IntentState.AUTHORIZED)
+        self.assertIsNotNone(authorized.receipt_id)
+
+    def test_genlayer_authorize_rejects_invalid_local_evidence(self):
+        agent = "0x" + "11" * 20
+        consumer = "0x" + "22" * 20
+        chain_policy = Policy(
+            policy_id="chain-policy-invalid",
+            version=1,
+            approved_agents=frozenset({agent}),
+            allowed_action_types=frozenset({"release_payment"}),
+            allowed_recipients=frozenset({consumer}),
+            approved_sources={"primary": "https://primary.example/api/"},
+            max_value=10_000,
+            required_sources=frozenset({"primary"}),
+            minimum_attestations=1,
+            maximum_age_seconds=100,
+            intent_ttl_seconds=60,
+            repair_window_seconds=120,
+            onchain_action_hash="ab" * 32,
+        )
+        engine = AegisEngine(verifier=self.verifier, clock=self.clock)
+        engine.register_policy(chain_policy)
+        intent = engine.create_intent(
+            intent_id="d" * 64,
+            policy_id="chain-policy-invalid",
+            policy_version=1,
+            agent=agent,
+            action_type="release_payment",
+            target="invoice-invalid",
+            recipient=consumer,
+            value=500,
+            payload_hash="ef" * 32,
+            attestations=[attestation("primary", "bad")],
+            onchain_target_hash="cd" * 32,
+        )
+        with self.assertRaisesRegex(DecisionError, "LOCAL_EVIDENCE_MISMATCH"):
+            engine.evaluate_genlayer(intent_id=intent.intent_id, consensus_decision="AUTHORIZE")
+        self.assertEqual(intent.state, IntentState.PENDING)
 
     def test_policy_rejects_redirect_ambiguous_source(self):
         with self.assertRaises(ValueError):

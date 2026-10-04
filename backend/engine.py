@@ -261,6 +261,16 @@ class AegisEngine:
                 raise DecisionError("GENLAYER_BINDING_REQUIRED")
             if consensus_decision not in {"AUTHORIZE", "DENY"}:
                 raise DecisionError("DECISION_TOKEN")
+            if consensus_decision == "AUTHORIZE":
+                now = self.clock()
+                if now >= intent.expires_at:
+                    raise DecisionError("INTENT_EXPIRED")
+                policy = self._policy(intent.policy_id, intent.policy_version)
+                deterministic_reason = self._deterministic_failure(intent, policy)
+                if deterministic_reason:
+                    raise DecisionError("LOCAL_POLICY_MISMATCH")
+                if self._evidence_failure(intent, policy, now):
+                    raise DecisionError("LOCAL_EVIDENCE_MISMATCH")
             if consensus_decision == "DENY":
                 intent.state = IntentState.DENIED
                 intent.reason = "GENLAYER_FINALIZED_DENIED"

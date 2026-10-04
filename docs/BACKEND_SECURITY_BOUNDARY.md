@@ -29,6 +29,14 @@ finalized firewall read-back. It additionally compares the read-back action
 subject, action-intent digest, consumer, expiry, and repair deadline with the
 persisted local intent before applying the off-chain mirror transition.
 
+The gateway does not contain a test sentinel or accept a free-form approval
+string. The decision caller must be the on-chain intent agent, and an
+authorization context must be a non-empty canonical evidence envelope whose
+SHA-256 equals the firewall's committed evidence digest. Malformed, empty, or
+mismatched context deterministically denies. The backend independently
+re-validates the policy and provider evidence before mirroring an authorized
+finalized decision and creating a receipt.
+
 Redirect provenance is not used as a security primitive: the signed envelope
 binds the provider, canonical resource, timestamps, and payload digest. The
 current Bradbury deployment and finalized state-transition evidence are
