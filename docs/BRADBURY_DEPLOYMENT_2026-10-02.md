@@ -1,8 +1,8 @@
 # Bradbury deployment and live backend evidence
 
 This document supersedes the earlier provisional deployment record. The
-current source is the committed source at `edb034f` (`expose owner-authorized
-repair gateway path`). The network is Testnet Bradbury (`chainId 4221`,
+current source is the committed source at `344a09a` (`enforce complete
+firewall state parity`). The network is Testnet Bradbury (`chainId 4221`,
 `https://rpc-bradbury.genlayer.com`).
 
 The deployment account is
@@ -55,6 +55,27 @@ The replacement transaction was finalized as
 5/5 agreement. Read-back showed evidence digest `0x66…66`, revision `1`,
 state `PENDING`, reason `EVIDENCE_REPLACED`, and unchanged action subject,
 action-intent digest, and repair deadline.
+
+## Current-source production API parity proof
+
+On 2026-10-04, the production API was exercised against a fresh 24-hour
+intent so the Bradbury finalization window could not outlive the intent:
+
+| Field | Value |
+| --- | --- |
+| Intent | `0673514660b1a40333aa95c65bb2a58f173d5c8d8cdda0fca3ee12ef51775a1d` |
+| Submit transaction | `0x5606bdb3775c560f7a37552dcef9a9ff4a29e224f1274a94d5ac2dbee67b8e06` |
+| Decision transaction | `0x2af1f628ccecca7ec985788e1b2994f0f1b65e3eec70a7177ab3387060cb09dd` |
+| Finalized decision | `DENY`, 5/5 agreement, finalized Bradbury receipt |
+| Finalized firewall state | `DENIED` / `CONSENSUS_DENIED`, state `4` |
+| Receipt | none |
+| Production evaluator | HTTP `200`; exact proof and all bindings verified |
+| Production persisted state | `DENIED` / `GENLAYER_FINALIZED_DENIED` |
+
+An earlier decision transaction (`0x7584…ed76f`) was intentionally not
+accepted by the backend after finality because its short-lived intent had
+expired before the consensus window closed. The firewall recorded
+`INTENT_EXPIRED`; no caller-supplied decision or acceptance shortcut was used.
 
 ## Release boundary
 
