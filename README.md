@@ -19,7 +19,7 @@ finalized Bradbury firewall record before a receipt is created.
 | Adversarial and concurrency tests | Complete |
 | Bradbury deployment and finalized live proof | Complete |
 | Bradbury authority adapter and finality checks | Complete |
-| Current-source positive API-to-Bradbury parity proof | Requires a matching live intent/transaction |
+| Current-source positive API-to-Bradbury parity proof | Complete; finalized authorization and single-use receipt replay verified |
 | Frontend control plane | Complete |
 | Production API deployment and durable state | Complete |
 

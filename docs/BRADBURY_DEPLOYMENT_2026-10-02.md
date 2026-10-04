@@ -1,8 +1,10 @@
 # Bradbury deployment and live backend evidence
 
 This document supersedes the earlier provisional deployment record. The
-current source is the committed source at `cb02b75` (`make evidence support
-rule explicit`). The network is Testnet Bradbury (`chainId 4221`,
+the deployed contract source is the committed source at `cb02b75` (`make
+evidence support rule explicit`); the repository release containing the
+receipt-replay correction is `048170a`. The network is Testnet Bradbury
+(`chainId 4221`,
 `https://rpc-bradbury.genlayer.com`).
 
 The deployment account is
@@ -97,9 +99,15 @@ and action subject
 The corrected direct-SDK gateway decision transaction is
 `0x431bb3d27a301ba0a2e4a69203fff06f6281682c85612d41cad5d826efc2f5b7`.
 It reached 5/5 agreement, `FINISHED_WITH_RETURN`, and returned `AUTHORIZE`.
-At the time of this record it is `ACCEPTED` and awaiting Bradbury finality;
-the API evaluator and receipt-consumption tests must not run until the
-receipt is `FINALIZED` and the firewall reads back `AUTHORIZED`.
+That transaction was a malformed-probe victim: an earlier CLI transport test
+for the same intent exercised the gateway's fail-closed `DENY` path before the
+correct direct-SDK call finalized. It is retained as negative evidence, not as
+an authorization proof. The clean retry used a fresh intent and no malformed
+decision call.
+
+The clean current-source positive proof is recorded below. It reached
+`FINALIZED` with successful execution, and the firewall read-back was
+`AUTHORIZED` with the exact committed bindings.
 
 ## Repair gateway reachability proof
 
@@ -154,6 +162,30 @@ An earlier decision transaction (`0x7584…ed76f`) was intentionally not
 accepted by the backend after finality because its short-lived intent had
 expired before the consensus window closed. The firewall recorded
 `INTENT_EXPIRED`; no caller-supplied decision or acceptance shortcut was used.
+
+## Current-source positive parity and receipt closure
+
+The clean retry was created through the production API and submitted to the
+current source-matched firewall:
+
+| Field | Value |
+| --- | --- |
+| Intent | `d97cf16382671ff84fcd295478559aa61590060b23a7ac0fbc98be5c398417c7` |
+| Submit transaction | `0x51facdad37c5ded41a33570949c07d4d87e1df441e65ab1d14df56212037c60e` |
+| Decision transaction | `0x6ba60254445e1e97de1a58a5d97f1c8bb1ed3abfb6a7f251cadc1cce60908087` |
+| Finalized decision | `AUTHORIZE`, successful execution, finalized Bradbury receipt |
+| Finalized firewall state | `AUTHORIZED` / `CONSENSUS_AUTHORIZED`, state `3` |
+| On-chain receipt | `0x40c9341e3f38a68aded5eb040bd584c84910d411128f09645d149a259f15d8cd` |
+| Production evaluator | HTTP `200`; `FINALIZED`, exact gateway/firewall and binding parity |
+| Production receipt | first consume HTTP `200`; persisted state `CONSUMED` |
+| Replay | HTTP `422`, `RECEIPT_ALREADY_CONSUMED` |
+
+The production API evaluator used the finalized transaction as proof; it did
+not accept the caller's `AUTHORIZE` field by itself. The local receipt ID was
+`f1d10469b4231643ab8762de223dd483be9ddfedc57173d9026e4343d5abcf4c` and was
+consumed once for the exact consumer and action-intent digest. The replay
+ordering is covered by a regression test so a consumed receipt is reported as
+already consumed even after the intent moves to `CONSUMED`.
 
 ## Release boundary
 
