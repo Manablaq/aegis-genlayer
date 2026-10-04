@@ -1,8 +1,8 @@
 # Bradbury deployment and live backend evidence
 
 This document supersedes the earlier provisional deployment record. The
-current source is the committed source at `344a09a` (`enforce complete
-firewall state parity`). The network is Testnet Bradbury (`chainId 4221`,
+current source is the committed source at `34d869a` (`use structured consensus
+decisions`). The network is Testnet Bradbury (`chainId 4221`,
 `https://rpc-bradbury.genlayer.com`).
 
 The deployment account is
@@ -17,6 +17,41 @@ The deployment account is
 | Gateway binding | — | `0xf52d3f53c2d2b6011fb4299db65e76e74d716a03d32cbe48e701ee2b4f8220cd` | accepted; firewall address matched exactly |
 | Policy `live-repair` | — | `0x50b9a719e1015ebc55777e6677bce3037b72c5e7179253615338956c6fd09deb` | accepted; 24-hour expiry and repair window |
 | Repair test intent | `0x99…99` | `0xb4abf9e6c418c1587e4ad6f8973d0c016380de481e1073dadec99029e0653115` | accepted; read-back was `PENDING` |
+
+## Hardened source-matched stack
+
+The earlier stack above is retained as historical evidence. The active source
+candidate uses a gateway that rejects caller-controlled authorization tokens,
+binds the exact canonical evidence digest, and uses the documented structured
+JSON consensus-validator pattern. Its matching firewall was deployed with the
+gateway address in its constructor; the failed constructor-only deployment
+(`0xffcf8c3a061c57e054c503d5a05c040bd8ca30644eebf871b3441808c62557ba`) was
+not used.
+
+| Component | Address | Transaction | Result |
+| --- | --- | --- | --- |
+| Decision gateway | `0xA7259b54222405a1FC12D9225916dcDB7FdbDfA0` | `0x6d73040e0e1041f492d11e67ef3ce70f8425ad797ab714e5746e76706b0391d7` | accepted, successful deployment |
+| Action firewall | `0xC3C300Ac277E1E657f63AA2100A31509F2Fd2f24` | `0xd69cb5850fd83da28f6837eed095d5ff5571cc545d4232c44aac6702bd341538` | accepted, successful deployment |
+| Gateway binding | — | `0x47c29e6beabc574f42356a1873019fd9b11f6d1bd2952684a1b426da2a3a31d8` | accepted; bound to the exact firewall |
+| Policy `live-repair-v3` | — | `0xc981a3f47e7c3fe17b04d8ce19b256a596a38474d7368a8db82d6880927ac720` | accepted; 24-hour expiry and repair window |
+
+The active candidate's live positive intent is
+`f678c3fdbcd1d95e32a77a69ed9619244cf4361a33267123a3106cf99d316669`. Its
+firewall submission is `0xdeed5169bbb5fbfe5f6a96ee0cf1405af2682c73e7d7947e3382fb1ff7566a02`.
+The read-back matched the API byte-for-byte: action subject
+`d07caeb1931a973306db60a34b994fb27d49953e3b7b9fc506379852736e2561`,
+action-intent `77ec96fcfd7ebc68d78ce20b1b39d9ddcbc9d071794f5e2eb48661ebd3330ab2`,
+evidence digest `d582c0a4e561261d684e416aa6c6e3bf379690498e49f3c0e3ad26c86300e185`,
+expiry `1791193896`, and state `PENDING`.
+
+The first positive gateway call used the wrong CLI argument type and failed
+before contract logic (`context` arrived as a list). The corrected call sends
+the exact same canonical evidence as an explicit string and reached 5/5
+agreement with `FINISHED_WITH_RETURN`. Its decision transaction is
+`0x56585b6b33da2f2865d923dbeab9f37e87864abdc16878161a253ca3efd93c08`.
+It remains `ACCEPTED` until Bradbury's finalization window; it must not be
+used by the API evaluator before status `FINALIZED` and a successful firewall
+read-back.
 
 The repair test intent binds action hash `0x11…11`, target hash `0x33…33`,
 payload hash `0x44…44`, value `500`, evidence digest `0x55…55`, and a stable
